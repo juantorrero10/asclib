@@ -1,5 +1,8 @@
 #ifndef LOG_H_
+#define LOG_H_
 
+
+//#define __DEBUG
 
 #ifdef __DEBUG
 #define NL() printf("\r\n");

@@ -1,11 +1,18 @@
+#define _POSIX_C_SOURCE 199309L
+
+#include <unistd.h>
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
+//#define __DEBUG
+
 #include <dispatcher.h>
 #include <log.h>
 #include <task_control.h>
-
+#include <task_mem.h>
+#include <ascerr.h>
+#include <asc_sleep.h>
 
 
 // Thread-local worker variable
@@ -32,6 +39,7 @@ void create_stack_frame(size_t stack_size, TCB* t) {
     *(void**)sp = task_trampoline;
 
     t->stack = stack;
+    t->stack_size = stack_size;
     t->ctx.rsp = sp;
     t->ctx.rbp = 0;
 }
@@ -56,7 +64,12 @@ void* dispatcher(void* arg) {
     assert(w);
     tl_worker = w;
     w->returned_array = calloc(w->n_tasks, sizeof(task_result));
+    INFO("%p", w->returned_array);
+    assert(w->returned_array);
+    
     TCB* t = NULL;
+
+    __alloc_occupation_map();
 
     for (;;) {
 
@@ -71,22 +84,38 @@ void* dispatcher(void* arg) {
         char* names[] = {"UNITIALIZED", "RUNNING", "READY", "WAITING", "FINISHED"};
         for (size_t i = 0; i < w->n_tasks; i++)
         {
-            INFO("%zu: %s", i, names[w->tasks[i].status]);
+            INFO("%zu: %s", i, names[w->tasks[i]->status]);
         }
 #endif        
         
-        for (size_t i = 0; i < w->n_tasks; i++)
+#ifdef __DEBUG
+        INFO("Occupation map:");
+        for (size_t i = 0; i < w->capacity; i++)
         {
-            int idx = (w->current + 1 + i) % w->n_tasks;
-    
-            if (w->tasks[i].status != FINISHED) all_finished = 0;
+            printf("%d, ", _get_occupation_at(i));
+        }
+        
+#endif
+        for (size_t i = 0; i < w->capacity; i++)
+        {
+            int idx = (w->current + 1 + i) % w->capacity;    
 
-            if (STATUS_RUNNABLE(w->tasks[idx].status) && found == 0) {
-                t = &w->tasks[idx];
+            if (w->tasks[idx] == NULL || !_get_occupation_at(idx)) continue;
+
+            // Candidate may be sleeping
+            if (SLEEPING(w->tasks[idx])) {
+                try_wake_up(w->tasks[idx]);
+            }
+
+            if (w->tasks[idx]->status != FINISHED) all_finished = 0;
+
+            if (STATUS_RUNNABLE(w->tasks[idx]->status) && found == 0) {
+                t = w->tasks[idx];
                 w->current = idx;
                 found = 1;
             }
         }
+
         OKAY("found=%d, all_finished=%d, previous=%zu, current=%zu", found, all_finished, buffer, w->current);
         
 
@@ -94,22 +123,46 @@ void* dispatcher(void* arg) {
             break; // we're done
         }
         
-        if (!all_finished && !found) {
-            //Deadlocked
-            WARN("Deadlock in worker {%zu}", w->th);
-            break;
+        if (!found) {
+            // Everyone is WAITING, but nobody is READY.
+            // Sleep for 100 microseconds to save CPU power.
+            struct timespec ts;
+            ts.tv_sec = 0;
+            ts.tv_nsec = 100000; // 100,000 nanoseconds = 100 microseconds
+            
+            nanosleep(&ts, NULL);
+            continue;
         }
 
         if (t->status == UNITIALIZED) {
             // Create frame
             create_stack_frame(STACK_SIZE, t);
         }
-        // Switch context.
+        // If unitialized this'll go to task_trampoline.
+        // Else it will go to task_yield, after the context switch
         t->status = RUNNING;
         _asm_ctx_switch_64(
             &t->ctx,
             &w->sched_ctx
         );
     }
+
+
+    int leaked_tasks = 0;
+    for (size_t i = w->initial_tasks; i < w->capacity; i++) {
+        if (_get_occupation_at(i)) { // Slot is still active
+            if (!w->tasks[i]->detached) {
+                leaked_tasks++;
+            }
+        }
+    }
+    
+
+    if (leaked_tasks) {
+        asc_error(ERR_TASK_OUTLIVED_FATHER, "dispatcher()", leaked_tasks);
+    }
+
+    __free_occupation_map();
+
     return NULL;
 } 

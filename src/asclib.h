@@ -46,24 +46,44 @@ typedef struct _Task_Entry_ {
 })
 
 // TASK CREATION AND CONTEOL
-#define TASK(name) void* name(void* __arg)
-#define task_arg(type) *((type*)&__arg)
+
 
 void task_yield();
-void* __task_alloc_ret_val(size_t s, void* v);
+void task_detach();
+void* __task_alloc_ret_val(size_t s, void* src);
+task_status task_get_status(task_handle th);
+void* __task_await_impl(task_handle th);
+task_handle __task_create(task__arg__constructor te);
+
+#define TASK(name) void* name(void* __arg)
+#define task_arg(type) *((type*)&__arg)
+#define ignore_arg() (void)__arg
 
 #define task_return(var, type) \
-    do {\
-        return __task_alloc_ret_val(sizeof(type), (void*)var);\
-    } while(0);\
+    do { \
+        type __temp = var; \
+        return __task_alloc_ret_val(sizeof(type), &__temp); \
+    } while(0)
 
 #define task_return_void() return NULL;
 #define task_recover_from_worker(result_arr, index, type) *((type*)result_arr[index])
 
-task_status task_get_status(task_handle th);
-void* __task_await_impl(task_handle th, size_t return_size);
+#define await(type, id) ({ \
+    void* __ptr = __task_await_impl(id); \
+    type __val = *(type*)__ptr; \
+    free(__ptr); \
+    __val; \
+})
 
-#define await(handle, return_type) *((return_type*)&__task_await_impl(handle))
+#define await_void(id) do { \
+    void* __ptr = __task_await_impl(id); \
+    free(__ptr); \
+} while(0)
+
+#define task_new(fptr, arg_type, value) ({\
+    task_handle __val = __task_create(task_entry(fptr, arg_type, value)); \
+    __val; \
+})
 
 
 // WORKER FUNCTION
@@ -71,6 +91,7 @@ worker_t* worker_create(size_t n_tasks, ...);
 void worker_destroy(worker_t* worker);
 void worker_run(worker_t* w);
 task_result* worker_await_all(worker_t* w);
+task_result* worker_await(worker_t* w);
 
 
 #endif // WORKER_H_

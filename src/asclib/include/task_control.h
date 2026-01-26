@@ -8,8 +8,8 @@ void task_trampoline(void);
 
 typedef size_t task_handle_t;
 
-#define STATUS_OF(id) tl_worker->tasks[id].status
-#define WAITING_FOR(id) tl_worker->tasks[id].waiting_for
+#define STATUS_OF(id) tl_worker->tasks[id]->status
+#define WAITING_FOR(id) tl_worker->tasks[id]->waiting_for
 
 void* __task_alloc_ret_val(size_t s, void* v);
 

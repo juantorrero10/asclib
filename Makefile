@@ -4,7 +4,7 @@ CFLAGS = -Wall -Wextra -Werror -std=c17 -Isrc/asclib/include -g -m64
 
 
 # --- C files ---
-SRC = main.c asclib/worker.c asclib/dispatcher.c asclib/task_control.c
+SRC = main.c asclib/worker.c asclib/dispatcher.c asclib/task_control.c asclib/task_mem.c asclib/err.c asclib/io/sleep.c
 OBJ_DIR = build/obj
 BIN_DIR = build/bin
 SRC_DIR = src
@@ -33,7 +33,7 @@ $(OBJ_DIR)/asclib/x86_64/%.o: $(SRC_DIR)/asclib/x86_64/%.asm
 	nasm -f elf64 $< -o $@
 
 # --- Build final executable ---
-$(BIN): $(OBJ) | $(BIN_DIR) $(OBJ_DIR)/asclib $(OBJ_DIR)/asclib/x86_64
+$(BIN): $(OBJ) | $(BIN_DIR) $(OBJ_DIR)/asclib/io $(OBJ_DIR)/asclib/x86_64
 	@echo "Linking -> $@"
 	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LIB_FLAG)
 
@@ -48,6 +48,9 @@ $(OBJ_DIR) $(BIN_DIR):
 	@mkdir -p $@
 
 $(OBJ_DIR)/asclib: | $(OBJ_DIR)
+	@mkdir -p $@
+
+$(OBJ_DIR)/asclib/io: | $(OBJ_DIR)/asclib
 	@mkdir -p $@
 
 $(OBJ_DIR)/asclib/x86_64: | $(OBJ_DIR)/asclib

@@ -1,5 +1,5 @@
-#ifndef DISPATCH_H_
-#define DISPATCH_H_
+#ifndef DISPATCHER_H_
+#define DISPATCHER_H_
 
 #include <defs.h>
 
@@ -24,4 +24,4 @@ void print_ctx(ctx_t* c);
 
 void* dispatcher(void* arg);
 
-#endif // DISPATCH_H_
+#endif // DISPATCHER_H_
