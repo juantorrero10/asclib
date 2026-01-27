@@ -5,7 +5,6 @@
 #include <stdint.h>
 
 
-
 typedef struct _Task_Ctx_Block worker_t;
 typedef void* task_result;
 typedef size_t task_handle;
@@ -23,7 +22,10 @@ typedef struct _Task_Entry_ {
     void* (*fptr)(void*);
     size_t arg_size;
     int64_t passing_value;
+    size_t n_pages;
 } task__arg__constructor;
+
+#define TASK_DEFAULT_PAGES 2
 
 /** 
  * @brief Macro for task creation.
@@ -41,49 +43,91 @@ typedef struct _Task_Entry_ {
     (task__arg__constructor){                                      \
         .fptr = task_function,                                     \
         .arg_size = sizeof(type),                                  \
-        .passing_value = _u.i64                                    \
+        .passing_value = _u.i64,                                   \
+        .n_pages = TASK_DEFAULT_PAGES                              \
+    };                                                             \
+})
+
+#define task_entry_ex(task_function, type, value, n_stack_pages)   \
+({                                                                 \
+    union { int64_t i64; type v; } _u = { .i64 = 0 };              \
+    _u.v = (value);                                                \
+    (task__arg__constructor){                                      \
+        .fptr = task_function,                                     \
+        .arg_size = sizeof(type),                                  \
+        .passing_value = _u.i64,                                   \
+        .n_pages = n_stack_pages                                   \
     };                                                             \
 })
 
 // TASK CREATION AND CONTEOL
 
 
-void task_yield();
+void __task_yield_impl();
 void task_detach();
 void* __task_alloc_ret_val(size_t s, void* src);
 task_status task_get_status(task_handle th);
 void* __task_await_impl(task_handle th);
 task_handle __task_create(task__arg__constructor te);
 
+// Task can only have one funtion signature.
 #define TASK(name) void* name(void* __arg)
+
+// Recover the argument
 #define task_arg(type) *((type*)&__arg)
+
+// Shut up the compiler
 #define ignore_arg() (void)__arg
 
+// Give control back to dispatcher.
+#define yield do { __task_yield_impl(); } while(0)
+
+#define detach do { task_detach(); } while(0);
+
+/**
+ * @brief Return a value from a task.
+ */
 #define task_return(var, type) \
     do { \
         type __temp = var; \
         return __task_alloc_ret_val(sizeof(type), &__temp); \
     } while(0)
 
+// Return nothing
 #define task_return_void() return NULL;
+
+// Recover the return value of one of the initial tasks
 #define task_recover_from_worker(result_arr, index, type) *((type*)result_arr[index])
 
-#define await(type, id) ({ \
-    void* __ptr = __task_await_impl(id); \
+// await() but expect and recover a return value.
+#define await_ret(type, handle) ({ \
+    void* __ptr = __task_await_impl(handle); \
     type __val = *(type*)__ptr; \
     free(__ptr); \
     __val; \
 })
 
-#define await_void(id) do { \
-    void* __ptr = __task_await_impl(id); \
+// Block the current task until 
+#define await(handle) do { \
+    void* __ptr = __task_await_impl(handle); \
     free(__ptr); \
 } while(0)
 
+// Task constructor to create the worker, stack defaults to 8Kb.
 #define task_new(fptr, arg_type, value) ({\
     task_handle __val = __task_create(task_entry(fptr, arg_type, value)); \
     __val; \
 })
+
+/**
+ * @brief Extended task_new macro
+ * @param n_pages N of memory pages (normally 4Kb) allocated as a stack.
+ */
+#define task_new_ex(fptr, arg_type, value, n_pages) ({\
+    task_handle __val = __task_create(task_entry_ex(fptr, arg_type, value, n_pages)); \
+    __val; \
+})
+
 
 
 // WORKER FUNCTION

@@ -4,45 +4,23 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <signal.h>
 
 //#define __DEBUG
+//#define __DEBUG_DESTROY
 
 #include <dispatcher.h>
 #include <log.h>
 #include <task_control.h>
 #include <task_mem.h>
 #include <ascerr.h>
+#include <task_stack.h>
 #include <asc_sleep.h>
 
 
 // Thread-local worker variable
 TLS worker_t* tl_worker = NULL;
-
-
-void create_stack_frame(size_t stack_size, TCB* t) {
-    
-    uint8_t* stack = malloc(stack_size);
-    assert(stack);
-    
-
-    uint8_t* sp = stack + stack_size;
-
-    // Align 16 bytes for ABI
-    sp = (uint8_t*)((uintptr_t)sp & ~0xF);
-
-    // Push fake rbp
-    sp -= sizeof(void*);
-    *(void**)sp = (void*)0xBF;
-
-    // Push fake return address -> trampoline
-    sp -= sizeof(void*);
-    *(void**)sp = task_trampoline;
-
-    t->stack = stack;
-    t->stack_size = stack_size;
-    t->ctx.rsp = sp;
-    t->ctx.rbp = 0;
-}
 
 void print_ctx(ctx_t* c) {
     printf("CONTEXT:\n");
@@ -56,7 +34,7 @@ void print_ctx(ctx_t* c) {
     
 }
 
-#define STACK_SIZE (60 * 1024) // 60Kb
+
 
 // Centralized dispatcher: Round robin
 void* dispatcher(void* arg) {
@@ -64,8 +42,9 @@ void* dispatcher(void* arg) {
     assert(w);
     tl_worker = w;
     w->returned_array = calloc(w->n_tasks, sizeof(task_result));
-    INFO("%p", w->returned_array);
     assert(w->returned_array);
+
+    set_sigsegv_handler();
     
     TCB* t = NULL;
 
@@ -79,23 +58,23 @@ void* dispatcher(void* arg) {
         
         // size_t next = (size_t)w->current + 1;
 
-#ifdef __DEBUG
+        #ifdef __DEBUG_STATES
         size_t buffer = w->current;
         char* names[] = {"UNITIALIZED", "RUNNING", "READY", "WAITING", "FINISHED"};
         for (size_t i = 0; i < w->n_tasks; i++)
         {
             INFO("%zu: %s", i, names[w->tasks[i]->status]);
         }
-#endif        
+        #endif        
         
-#ifdef __DEBUG
+        #ifdef __DEBUG_OCCMAP
         INFO("Occupation map:");
         for (size_t i = 0; i < w->capacity; i++)
         {
             printf("%d, ", _get_occupation_at(i));
         }
         
-#endif
+        #endif
         for (size_t i = 0; i < w->capacity; i++)
         {
             int idx = (w->current + 1 + i) % w->capacity;    
@@ -115,9 +94,9 @@ void* dispatcher(void* arg) {
                 found = 1;
             }
         }
-
+        #ifdef __DEBUG_STATES
         OKAY("found=%d, all_finished=%d, previous=%zu, current=%zu", found, all_finished, buffer, w->current);
-        
+        #endif
 
         if (all_finished) {
             break; // we're done
@@ -136,24 +115,40 @@ void* dispatcher(void* arg) {
 
         if (t->status == UNITIALIZED) {
             // Create frame
-            create_stack_frame(STACK_SIZE, t);
+            create_stack_frame(t->stack_size, t, t->guard_page);
         }
         // If unitialized this'll go to task_trampoline.
-        // Else it will go to task_yield, after the context switch
+        // Else it will go to __task_yield_impl, after the context switch
         t->status = RUNNING;
+        
         _asm_ctx_switch_64(
             &t->ctx,
             &w->sched_ctx
         );
+
+        // Returned from a task, check stack overflow by bounds (second-layer protection).
+        // 128 shadow bytes
+        if (t->ctx.rsp < t->stack + 128) {
+            asc_error(PANIC_STACK_OVERFLOW_RSP_BOUND, "dispatcher()", (int64_t)t->ctx.rsp);
+        }
+
+        if (STATUS_OF(w->current) == FINISHED) {
+            #ifdef __DEBUG_DESTROY
+            INFO("TASK<%zu> destroy", w->current);
+            #endif
+            if (w->tasks[w->current]->detached) {
+                __task_destroy(w->current);
+                w->tasks[w->current] = NULL;
+            }
+            continue;
+        }
     }
 
 
     int leaked_tasks = 0;
     for (size_t i = w->initial_tasks; i < w->capacity; i++) {
-        if (_get_occupation_at(i)) { // Slot is still active
-            if (!w->tasks[i]->detached) {
-                leaked_tasks++;
-            }
+        if (_get_occupation_at(i) && !w->tasks[i]->detached) { // Slot is still active
+            leaked_tasks++;
         }
     }
     

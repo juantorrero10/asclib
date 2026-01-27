@@ -10,13 +10,11 @@ typedef struct {
     double d;
 } some_info;
 
-TASK(children2);
 
 TASK(children) {
-    task_detach();
     ignore_arg();
     printf("Heey\n");
-    asc_sleep(task_arg(uint64_t));
+    await(asc_sleep(task_arg(uint64_t)));
     printf("Ended execution!!\n");
     task_return(42, int);
 }
@@ -25,13 +23,12 @@ TASK(father) {
     ignore_arg();
 
     int a = 0;
-
-    task_handle h1 = task_new(children, uint64_t, 2000); (void)h1;
+    task_handle h1 = task_new(children, uint64_t, 1000); (void)h1;
     
 
     printf("Hello from father\n");
 
-    //a = await(int, h1);
+    a = await_ret(int, h1);
     //a = await(int, h2);
 
     printf("Children retuned: %d\n", a);
@@ -47,7 +44,7 @@ TASK(counter) {
     for (size_t i = 0; i < 10; i++)
     {
         printf("i = %zu\n", i);
-        task_yield();
+        yield;
     }
     
 
@@ -58,10 +55,11 @@ TASK(counter) {
 
 int main() {
 
+
     worker_t* w = worker_create(2, 
-        task_entry(father, void*, 0),
-        task_entry(counter, void*, 0)
-    );
+            task_entry(father, void*, 0),
+            task_entry(counter, void*, 0)
+        );
     
     worker_run(w);
     some_info i =  task_recover_from_worker(worker_await(w), 0, some_info);
@@ -72,6 +70,6 @@ int main() {
     printf("d: %lf\n", i.d);
 
     worker_await_all(w);
-
     worker_destroy(w);
+    
 }

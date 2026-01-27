@@ -4,7 +4,7 @@ CFLAGS = -Wall -Wextra -Werror -std=c17 -Isrc/asclib/include -g -m64
 
 
 # --- C files ---
-SRC = main.c asclib/worker.c asclib/dispatcher.c asclib/task_control.c asclib/task_mem.c asclib/err.c asclib/io/sleep.c
+SRC = main.c asclib/worker.c asclib/dispatcher.c asclib/task_control.c asclib/task_mem.c asclib/err.c asclib/io/sleep.c asclib/task_stack.c
 OBJ_DIR = build/obj
 BIN_DIR = build/bin
 SRC_DIR = src

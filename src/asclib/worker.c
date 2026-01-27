@@ -2,12 +2,14 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
 
 #include <defs.h>
 #include <dispatcher.h>
 #include <task_mem.h>
 #include <log.h>
 #include <ascerr.h>
+#include <task_stack.h>
 
 
 worker_t* worker_create(size_t n_tasks, ...) {
@@ -33,6 +35,8 @@ worker_t* worker_create(size_t n_tasks, ...) {
             .dyn_created = 0,
             .ctx = { 0 },
             .wake_at = 0,
+            .guard_page = 1,
+            .stack_size = te.n_pages * PAGE_SIZE,
             .waiting_for = (size_t)-1 //No one
         };
 
@@ -56,22 +60,26 @@ void worker_destroy(worker_t* w) {
     if (!w->all_finished && w->initial_done) {
         asc_error(ERR_TASK_OUTLIVED_DESTROYER, "worker_destroy()", 0); 
     } else if (!w->initial_done){
-        asc_error(PANICK_UNAWAITED_DESTROY, "worker_destroy()", 0);
+        asc_error(PANIC_UNAWAITED_DESTROY, "worker_destroy()", 0);
     }
 
-    for (size_t i = 0; i < w->n_tasks; i++)
+    for (size_t i = 0; i < w->capacity; i++)
     {
+        if (w->tasks[i] == NULL) continue;
         if (i < w->initial_tasks) {
-            INFO("returned array: %p\n", w->returned_array);
-            if (w->returned_array[i] != NULL) 
+            if (w->returned_array[i] != NULL) {
+                
                 free(w->returned_array[i]);
-            free(w->tasks[i]->stack);
+                
+            }
+            dealloc_stack(w->tasks[i]);
+            
         }
         free(w->tasks[i]);
     }
-
     free(w->returned_array);
     free(w->tasks);
+    free(w->emergency_stack);
     free(w);
 }
 

@@ -34,8 +34,11 @@ typedef struct {
 typedef struct _Task_Ctx_Block {
     void* (*fptr)(void* arg);
     ctx_t ctx;
+
     uint8_t* stack;
     size_t stack_size;
+    int guard_page;
+
     int64_t arg;            // Always 8-bytes
     task_status status;
     size_t waiting_for;
@@ -69,13 +72,31 @@ typedef struct _Thread_Worker {
 
     ctx_t sched_ctx;
     void** returned_array;
+
+    void* emergency_stack;
+
 } worker_t;
+
+
 
 typedef struct _Task_Entry_ {
     void* (*fptr)(void*);
     size_t arg_size;
     int64_t value;
+    size_t n_pages;
 } task_entry_t;
+
+#define task_entry_ex(task_function, type, pvalue, n_stack_pages)  \
+({                                                                 \
+    union { int64_t i64; type v; } _u = { .i64 = 0 };              \
+    _u.v = (pvalue);                                                \
+    (task_entry_t){                                                \
+        .fptr = task_function,                                     \
+        .arg_size = sizeof(type),                                  \
+        .value = _u.i64,                                           \
+        .n_pages = n_stack_pages                                   \
+    };                                                             \
+})
 
 worker_t* worker_create(size_t n_tasks, ...);
 void worker_destroy(worker_t* task);

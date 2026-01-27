@@ -6,6 +6,8 @@
 
 #include <defs.h>
 #include <dispatcher.h>
+#include <task_mem.h>
+#include <task_control.h>
 
 
 static uint64_t asc_get_time_ms() {
@@ -14,21 +16,37 @@ static uint64_t asc_get_time_ms() {
     return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
 }
 
-void asc_sleep(uint64_t ms) {
-    if (ms == 0) return;
+// Set wake up timer and return to dispatcher
+void* __internal_async_sleep(void* __arg) {
+    uint64_t ms = *((uint64_t*)&__arg);
+
     
     worker_t* w = tl_worker;
-    assert(w);
-
     TCB* t = w->tasks[w->current];
+    
     t->wake_at = asc_get_time_ms() + ms;
     t->status = WAITING;
 
-    // Switch back to scheduler
-    _asm_ctx_switch_64(&w->sched_ctx, &t->ctx);
+    __task_yield_impl();
 
-    // return when woken up
+    return NULL;
 }
+
+/**
+ * @brief create non-blocking sleep task
+ * @param ms Milliseconds to-sleep
+ * @note use await() to block current task until time its over
+ */
+task_handle_t asc_sleep(uint64_t ms) {
+    if (ms == 0) return -1;
+    
+    // Create concurrent task, without page guard and tiny stack.
+    return __task_create_ex(
+        task_entry_ex(__internal_async_sleep, uint64_t, ms, 0), 512, 0);
+    
+}
+
+
 
 void try_wake_up(TCB* candidate) {
     if (asc_get_time_ms() >= candidate->wake_at) {
@@ -36,3 +54,4 @@ void try_wake_up(TCB* candidate) {
         candidate->status = READY;
     }
 }
+

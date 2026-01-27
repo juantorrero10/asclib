@@ -11,14 +11,16 @@
 #include <log.h>
 
 // Give control back
-void task_yield() {
+void __task_yield_impl() {
     worker_t* w = tl_worker;
 
-    assert(w != NULL);
+    ASSERT_CONTEXT(w, "yield");
 
     size_t i = w->current;
     TCB* t = w->tasks[i];
-    t->status = READY;
+
+    if (t->status == RUNNING)
+        t->status = READY;
 
     _asm_ctx_switch_64(
         &w->sched_ctx,
@@ -33,6 +35,19 @@ void task_yield() {
 
 void* __task_await_impl(task_handle_t th) {
     worker_t* w = tl_worker;
+
+    ASSERT_CONTEXT(w, "await()");
+
+    // Functions can 
+    if (th == HANDLE_IGNORE) { 
+        __task_yield_impl();
+        return calloc(1, 8);
+    }
+    else {
+        ASSERT_VALID_HANDLE(w, th);
+    }
+
+
     size_t current_id = w->current;
     
     w->tasks[current_id]->status = WAITING;
@@ -105,7 +120,7 @@ void task_trampoline(void) {
 
     if (t->detached) {
         free(t->returned);
-        __task_destroy(w->current);
+        // Cleanup on dispatcher
     }
     
 
@@ -120,7 +135,7 @@ void task_trampoline(void) {
 
 void task_detach() {
     worker_t* w = tl_worker;
-    assert(w->tasks[w->current]);
+    ASSERT_CONTEXT(w, "detach");
     w->tasks[w->current]->detached = 1;
 
     // Alert any task that he have detached

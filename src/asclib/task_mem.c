@@ -1,7 +1,10 @@
 #include <assert.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <stdio.h>
 
 #include <task_control.h>
+#include <task_stack.h>
 #include <defs.h>
 #include <dispatcher.h>
 
@@ -14,8 +17,16 @@
 TLS uint8_t* occupation_map = NULL;
 
 
-task_handle_t __task_create(task_entry_t te) {
 
+
+// Private more priviledge task creator.
+task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t __create_guard_page) {
+
+    if (__create_guard_page > 1) __create_guard_page = 1;
+
+    // If we decide to not override
+    if ( ov_stack_size == 0 ) ov_stack_size = te.n_pages * PAGE_SIZE;
+    
     worker_t* w = tl_worker;
     assert(w);
 
@@ -32,10 +43,12 @@ task_handle_t __task_create(task_entry_t te) {
         .fptr = te.fptr,
         .arg = te.value,
         .status = UNITIALIZED,
-        .stack_size = 0,
+        .stack_size = ov_stack_size,
         .wake_at = 0,
         .ctx = { 0 },
         .dyn_created = 1,
+        .detached = 0,
+        .guard_page = __create_guard_page,
         .waiting_for = (size_t)-1,
     };
 
@@ -47,14 +60,17 @@ task_handle_t __task_create(task_entry_t te) {
         if (occupation_map[i] == 0) { new_id = i; break; }
 
     if ((w->n_tasks >= w->capacity) && new_id == -1) {
+        size_t old_c = w->capacity;
         w->tasks = realloc(w->tasks, sizeof(TCB*) * w->capacity * 2);
         occupation_map = realloc(occupation_map, w->capacity * 2);
         w->capacity *= 2;
-        memset(occupation_map + w->n_tasks, 0, w->capacity - w->n_tasks);
-        new_id = w->n_tasks;
-        w->tasks[new_id] = malloc(sizeof(TCB));
-    }
 
+        // Memset to 0, destructors rely on NULL values!!
+        memset(occupation_map + w->n_tasks, 0, w->capacity - w->n_tasks);
+        memset(w->tasks + old_c, 0, sizeof(TCB*) * (w->capacity - old_c));
+        new_id = w->n_tasks;
+    }
+    w->tasks[new_id] = malloc(sizeof(TCB));
     memcpy(w->tasks[new_id], &t, sizeof(TCB));
 
     occupation_map[new_id] = 1;
@@ -64,12 +80,18 @@ task_handle_t __task_create(task_entry_t te) {
     return new_id;
 }
 
+// Exposed function for task creation, its a wrapper for the more priviledge function.
+// Users cannot create tasks without a guard page, insider runtime 'async' functions can and will for performance.
+// For the same reason they cannot alloc by indivual bytes, only whole pages.
+task_handle_t __task_create(task_entry_t te) {  return __task_create_ex(te, 0, 1); }
+
 void __task_destroy(task_handle_t t) {
     worker_t* w = tl_worker;
     assert(w);
 
-    free(w->tasks[t]->stack);
-    //if (w->tasks[t]->returned) free(w->tasks[t]->returned);
+
+    dealloc_stack(w->tasks[t]);
+    
     w->tasks[t]->stack = NULL;
     occupation_map[t] = 0; // Free the slot for reuse
 

@@ -1,24 +1,26 @@
 #define _POSIX_SOURCE
 #include <signal.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include <ascerr.h>
 
 
-void panick_linux(const char* msg, const char* function) {
+void panic_linux(const char* msg, const char* function) {
     PK_MSG(function, msg);
-    kill(getpid(), SIGABRT);
+    fflush(stderr);
+    abort();
 }
 
 
 
 
-void asc_error(asclib_err_t err, const char* function, int number) {
+void asc_error(asclib_err_t err, const char* function, int64_t number) {
 
     switch (err)
     {
     case ERR_TASK_OUTLIVED_FATHER:
-        RT_ERR("{%d} Undetached tasks outlived father's lifetime. May cause memory leaks, \033[4mforgot to \033[1m\033[97mawait()?\033[0m", function, number);
+        RT_ERR("{%ld} Undetached tasks outlived father's lifetime. May cause memory leaks, \033[4mforgot to \033[1m\033[97mawait()?\033[0m", function, number);
         EXPL("If this is intended behaviour \033[4mcall \033[1m\033[97mtask_detach()\033[0m anywhere inside the task before the return statement.");
         break;
 
@@ -28,13 +30,40 @@ void asc_error(asclib_err_t err, const char* function, int number) {
         EXPL("Possible memory leak if task doesn't end before the main program does.");
         break;
 
-    case PANICK_UNAWAITED_DESTROY:
-        RT_ERR("Tried to destroy worker with yet to be completed tasks, \033[4muse \033[1m\033[97mworker_await().\033[0m", function);
-        panick_linux("This error may cause undefined behaviour.", function);
+    case PANIC_UNAWAITED_DESTROY:
+        RT_ERR_FLESS("Tried to destroy worker with yet to be completed tasks, \033[4muse \033[1m\033[97mworker_await().\033[0m");
+        panic_linux("This error may cause undefined behaviour.", function);
         break;
-    
+
+    case PANIC_CONTEXT_VIOLATION:
+        RT_ERR_FLESS("Illegal call to \033[1m\033[97m%s\033[0m from outside a task context.", function);
+        EXPL("The runtime can only \033[4myield\033[0m, \033[4mawait()\033[0m or \033[4mdetach\033[0m inside a \033[1m\033[97mTASK(...)\033[0m block.");
+        panic_linux("Execution cannot continue outside of a managing dispatcher", function);
+        break;
+
+    case PANIC_STACK_OVERFLOW_GUARDPAGE:
+        RT_ERR_FLESS("Triggered guard page 'trap' at the top of the stack, illegal access @ \033[1m\033[97m%p\033[0m.", *(void**)&number);
+        panic_linux("\033[4mStack overflow\033[0m, a bigger stack can be allocated with \033[1m\033[97mtask_new_ex(...)\033[0m or \033[1m\033[97mtask_entry_ex(...)\033[0m.", function);
+        break;
+
+    case PANIC_AWAIT_SELF:
+        RT_ERR("Task<%ld> tried to await to itself.", function, number);
+        EXPL("Likely caused by calling with raw ID which is highly discouraged.");
+        panic_linux("Execution would have reached a \033[4mdeadlock\033[0m", function);
+        break;
+
+    case PANIC_AWAIT_INVALID_ID:
+        RT_ERR("Task handle provided {%ld} to await did not reference any task. \033[4mValue was \033[1m\033[97minvalid\033[0m\033[4m or \033[1m\033[97mout of bounds\033[0m.", function, number);
+        panic_linux("Task would have \033[1m\033[97mblocked indefinitely.\033[0m", function);
+        break;
+
+    case PANIC_STACK_OVERFLOW_RSP_BOUND:
+        RT_ERR("Detected stack pointer at illegal location, exceding stack boundaries. \033[1m\033[97mrsp @ %p\033[0m.", function, (void*)number);
+        panic_linux("\033[4mStack overflow\033[0m, a bigger stack can be allocated with \033[1m\033[97mtask_new_ex(...)\033[0m or \033[1m\033[97mtask_entry_ex(...)\033[0m.", function);
+        break;
+
     case WARN_AWAITING_DETACHED_TASK:
-        RT_WRN("The task<%d> marked as 'detached' is being awaited. Remove the \033[1m\033[97mawait()\033[0m call or don't use \033[1m\033[97mtask_detach()\033[0m", number);
+        RT_WRN("The task<%ld> marked as 'detached' is being awaited. Don't \033[1m\033[97mawait()\033[0m it or don't use \033[1m\033[97mdetach\033[0m", number);
         EXPL("In this situation the await() call is ignored.");
         break;
     default:
