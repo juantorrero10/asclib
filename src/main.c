@@ -1,84 +1,54 @@
-#include "asclib.h"
 #include "asc_runtime.h"
+#include "asclib.h"
+#include <unistd.h>
+#include <fcntl.h>
+#include <string.h>
 #include <stdio.h>
 
 
-async(reader) {
-    ignore_arg();
 
-    char buff[1024];
-    printf(">>>: ");
-    ssize_t s = await_ret(ssize_t, asc_read(0, buff, 1024));
-
-    printf("Read %zd bytes -> %s", s, buff);
-
-    task_return_void();    
+async(sleeper, uint64_t ms )
+    // uint64_t val = arg(ms); // Optional: if you want a local copy
+    printf("Sleeping for: %lu\n", arg(ms)); 
+    await(asc_sleep(arg(ms)));
+    printf("Woken up: %lu ms\n", arg(ms));
+    task_return_void();
 }
 
-async(writer) {
-    char* file = task_arg(char*);
-
-    int fd = asc_open(file, O_WRONLY | O_APPEND, 0);
-    if (fd == -1) task_return_void();
-
-    char buff[] = "This is some data!\n";
-
-    printf("[Writer] trying to write: %s", buff);
-    ssize_t written = await_ret(ssize_t, asc_write(fd, buff, 19));
-    printf("[Writter] Written %zd bytes\n", written);
-
-
-    task_return(written, ssize_t);
-}
-
-async(counter) {
-    ignore_arg();
-
-    for (size_t i = 0; i < 10; i++)
-    {
-        printf("i = %zu\n", i);
+async(counter, int n; char label )
+    for (int i = 0; i < arg(n); i++) {
+        printf("%c: %d\n", arg(label), i);
         yield;
     }
-    
-
     task_return_void();
 }
 
+async(main_task, uint64_t ms)
 
-async(father) {
-    ignore_arg();
+    printf("Racing two tasks\n");
 
-    task_handle timeout = asc_sleep(2000);
-    printf("Hello from father\n");
-
-    
-    await(task_new(reader, int, 0));
-    await(task_new(reader, int, 0));
-    
-    await(timeout);
-
-    printf("Timed out\n");
+    // task_spawn now correctly builds the task_entry_t
+    task_handle h1 = task_spawn(sleeper, .ms = arg(ms));
+    await(h1);
+    await(task_spawn(counter, .n = 10, .label = 'x'));
+    printf("Finished\n");
     task_return_void();
-
 }
 
+int main(int argc, char** argv) {
+    // For main_task (no params), we use the old entry style or update it too
+    uint64_t ms = (argc > 1)? atoi(argv[1]) : 2000;
+    (void)ms;
 
+    task__arg__constructor te = task_entry(main_task, int, ms); (void)te;
 
+    worker_t* w = worker_create(1, task_entry(main_task, int, ms));
 
-int main() {
-
-
-    worker_t* w = worker_create(2, 
-            task_entry(father, void*, 0),
-            task_entry(counter, void*, 0)
-        );
-    
     worker_run(w);
     worker_await(w);
 
     printf("Returned!\n");
-
     worker_destroy(w);
-
     printf("End program!!\n");
+    return 0;
 }

@@ -8,7 +8,9 @@
 #include <signal.h>
 #include <sys/epoll.h>
 
-
+//#define __DEBUG
+//#define __DEBUG_STATES
+//#define __DEBUG_OCCMAP
 
 #include <dispatcher.h>
 #include <log.h>
@@ -16,43 +18,97 @@
 #include <task_mem.h>
 #include <ascerr.h>
 #include <task_stack.h>
-#include <asc_sleep.h>
+#include <wrappers.h>
+#include <collections.h>
+
+// Managed by sleep.c
+#define TIMERS_INITIAL_CAP 16
+extern TLS heap_t* timers;
 
 
 // Thread-local worker variable
 TLS worker_t* tl_worker = NULL;
 
-void print_ctx(ctx_t* c) {
-    printf("CONTEXT:\n");
-    char* names[] = {"rsp", "rbp", "rbx", "r12", "r13", "r14", "r14"};
-    for (size_t i = 0; i < 7; i++)
-    {
-        printf("%s: %p", names[i], ((uint8_t**)c)[i]);
-        if ((i == 1 || i == 0) && ((uint8_t**)c)[i] != 0) printf(" -> 0x%012lx", *((uint64_t*)((uint8_t**)c)[i]));
-        printf("\n");
-    }
-    
-}
-
 #ifdef __DEBUG_STATES
-void log_decision_state(worker_t* w) {
+static void log_decision_state(worker_t* w, char* buff) {
     size_t spaces = 0;
     char* names[] = {"UNITIALIZED", "RUNNING", "READY", "WAITING", "FINISHED"};
     char* wait_for[] = {"WAIT_NONE", "WAIT_TASK", "WAIT_FD", "WAIT_TIMER"};
+    size_t sz = 0;
+    uint64_t num_to_show = 0;
     for (size_t i = 0; i < w->tasks.capacity; i++)
     {
 
         if (!_get_occupation_at(i)) continue;
-        if (i == w->tasks.current) printf("\033[90m[*]\033[1m\033[97m ");
-        else printf("\033[90m[*] ");
-        spaces = 20 - strlen(names[w->tasks.arr[i]->status]);
-        printf("%zu: %s%.*s<%s -> %lu>\033[0m\n", i, names[w->tasks.arr[i]->status], (int)spaces, "                   ", 
+        if (i == w->tasks.current) { 
+            sz += sprintf(buff + sz, "\033[90m[*]\033[1m\033[97m "); 
+        }
+        else sz += sprintf(buff + sz, "\033[90m[*] ");
+
+        if (!w->tasks.arr[i]) {
+            sz += sprintf(buff + sz, "%zu: VIRTUAL\n", i);
+        } else {
+            if (w->tasks.arr[i]->status == WAITING && w->tasks.arr[i]->w_reason == WAIT_TIMER) {
+                num_to_show = w->tasks.arr[i]->wait_for.timestamp - get_time_ms();
+                if (num_to_show > __INT64_MAX__) num_to_show = 0;
+            } else {
+                num_to_show = w->tasks.arr[i]->wait_for.timestamp;
+            }
+            spaces = 20 - strlen(names[w->tasks.arr[i]->status]);
+            sz += sprintf(buff + sz, "%zu: %s%.*s<%s -> %lu>\033[0m\n", i, names[w->tasks.arr[i]->status], (int)spaces, "                   ", 
             (w->tasks.arr[i]->status == WAITING)? wait_for[w->tasks.arr[i]->w_reason] : " _ ",
-            (w->tasks.arr[i]->status == WAITING)? w->tasks.arr[i]->wait_for.timestamp : 0 );
+            (w->tasks.arr[i]->status == WAITING)? num_to_show : 0 );
+        }
+        
         
     }
 }
 #endif
+
+
+static void lazy_wait(worker_t* w) {
+    // Calculate the next timer to wake up
+    int64_t timeout_ms = -1; // Default: block indefinitely if no timers
+    uint64_t now = get_time_ms(); // Use your library's time function
+    size_t top;
+
+    assert(timers);
+
+    // Erase invalid entries
+    while (timers->size > 0) {
+        // Looking-ahead, we don't want to modify a valid entry
+        top = timers->data[0];
+        if (!w->tasks.arr[top] || STATUS_OF(top) == FINISHED || W_REASON(top) != WAIT_TIMER) {
+            heap_peek(w, timers);
+            continue;
+        }
+        break;
+    }
+
+
+    if (timers->size > 0) {
+        size_t top_h = timers->data[0];
+        uint64_t next_timer = w->tasks.arr[top_h]->wait_for.timestamp;
+
+        if (next_timer <= now) {
+            timeout_ms = 0; // Already expired
+        } else {
+            timeout_ms = (int)(next_timer - now);
+        }
+    }
+
+    // 2. Sleep until I/O OR the next timer
+    int n_ready = epoll_wait(w->sync.epoll_fd, w->sync.ready_events, MAX_EVENTS, timeout_ms);
+
+    // 3. Handle I/O wakeups
+    for (int i = 0; i < n_ready; i++) {
+        size_t wake = w->sync.ready_events[i].data.u32;
+        if (w->tasks.arr[wake]) {
+            w->tasks.arr[wake]->w_reason = WAIT_NONE;
+            w->tasks.arr[wake]->status = READY;
+        }
+    }
+}
 
 
 // Centralized dispatcher: Round robin
@@ -63,12 +119,22 @@ void* dispatcher(void* arg) {
     w->returned_array = calloc(w->tasks.running, sizeof(task_result));
     assert(w->returned_array);
 
-    set_sigsegv_handler();
+    //set_sigsegv_handler();
     
     TCB* t = NULL;
 
     __alloc_occupation_map();
+    timers = heap_alloc(TIMERS_INITIAL_CAP);
 
+
+    #ifdef __DEBUG_STATES
+    char states[1024];
+        struct {
+        size_t curr;
+        size_t prev;
+        task_status st;
+    } last_dec;
+    #endif
 
     for (;;) {
 
@@ -80,7 +146,7 @@ void* dispatcher(void* arg) {
 
         #ifdef __DEBUG_STATES
         size_t buffer = w->tasks.current;
-        log_decision_state(w);
+        log_decision_state(w, states);
         #endif        
         
         #ifdef __DEBUG_OCCMAP
@@ -98,7 +164,7 @@ void* dispatcher(void* arg) {
         {
             int idx = (w->tasks.current + 1 + i) % w->tasks.capacity;    
 
-            if (w->tasks.arr[idx] == NULL || !_get_occupation_at(idx)) continue;
+            if (!_get_occupation_at(idx) || !w->tasks.arr[idx]) continue;
 
             // Candidate may be sleeping
             if (SLEEPING(w->tasks.arr[idx])) {
@@ -114,7 +180,13 @@ void* dispatcher(void* arg) {
             }
         }
         #ifdef __DEBUG_STATES
-        OKAY("found=%d, all_done=%d, previous=%zu, current=%zu", found, all_done, buffer, w->tasks.current);
+        if (last_dec.curr != w->tasks.current || last_dec.st != STATUS_OF(w->tasks.current) || last_dec.prev != buffer){
+            printf("%s", states);
+            OKAY("found=%d, all_done=%d, previous=%zu, current=%zu, remaining=%zu", found, all_done, buffer, w->tasks.current, w->sync.initial_remaining);
+        }
+        last_dec.curr = w->tasks.current;
+        last_dec.st = STATUS_OF(w->tasks.current);
+        last_dec.prev = buffer;
         #endif
 
         if (all_done) {
@@ -124,18 +196,7 @@ void* dispatcher(void* arg) {
         // All tasks are waiting for something/someone:
         // In this case we need to poll -> lazy wait but wake up the instant data is ready.
         if (!found) {
-            int n_ready = epoll_wait(w->sync.epoll_fd, w->sync.ready_events, MAX_EVENTS, 100);
-
-            for (int i = 0; i < n_ready; i++)
-            {
-                size_t wake = w->sync.ready_events[i].data.u32;
-                if (w->tasks.arr[wake]) {
-                    w->tasks.arr[wake]->w_reason = WAIT_NONE;
-                    w->tasks.arr[wake]->wait_for.fd = -1;
-                    w->tasks.arr[wake]->status = READY;
-                }
-            }
-            
+            lazy_wait(w);
             continue;
         }
 
@@ -170,14 +231,12 @@ void* dispatcher(void* arg) {
         }
     }
 
-
     int leaked_tasks = 0;
     for (size_t i = w->tasks.initial; i < w->tasks.capacity; i++) {
         if (_get_occupation_at(i) && !w->tasks.arr[i]->detached) { // Slot is still active
             leaked_tasks++;
         }
     }
-    
 
     if (leaked_tasks) {
         asc_error(ERR_TASK_OUTLIVED_FATHER, "dispatcher()", (any_t)leaked_tasks);
@@ -186,6 +245,9 @@ void* dispatcher(void* arg) {
     //Free the TLS objects
     __free_occupation_map();
     __io_free_hashmap();
+    __hm_await_free();
+    heap_dealloc(&timers);
+    
 
     return NULL;
 } 

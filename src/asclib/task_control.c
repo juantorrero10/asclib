@@ -11,6 +11,15 @@
 #include <task_mem.h>
 #include <ascerr.h>
 #include <log.h>
+#include <wrappers.h>
+#include <collections.h>
+
+TLS any_result* last_any_result = NULL;
+
+#define HM_INITIAL_CAPACITY 4
+TLS uu_hash_map* hmawait = NULL;
+
+static void* __any_result_select_method();
 
 // Give control back
 void __task_yield_impl() {
@@ -35,9 +44,13 @@ void __task_yield_impl() {
     return; // <-- return to task 
 }
 
-void* __task_await_impl(task_handle_t th) {
+void* __task_await_impl(task_handle_t th, int expect) {
     worker_t* w = tl_worker;
     void* result;
+
+    if (!hmawait) {
+        hmawait = hm_alloc(HM_INITIAL_CAPACITY);
+    }
 
     ASSERT_CONTEXT(w, "await()");
 
@@ -70,6 +83,11 @@ void* __task_await_impl(task_handle_t th) {
     t->w_reason = WAIT_TASK;
     t->wait_for.task = th;
 
+    assert(hm_add_entry(hmawait, w->tasks.current, th));
+
+    // Set the waiting group to itself.
+    w->tasks.arr[th]->await_group = th;
+
     _asm_ctx_switch_64(&w->sched_ctx, &w->tasks.arr[current_id]->ctx);
 
     // <-- Execution resumes here when target task finishes.
@@ -86,10 +104,116 @@ void* __task_await_impl(task_handle_t th) {
 
     result = w->tasks.arr[th]->returned;
 
+    if (expect && !result) {
+        asc_error(PANIC_EXPECT_NULL, "__task_await_impl()", (any_t)th);
+    }
+
     // Clean 
     __task_destroy(th);
 
+    assert(hm_remove_entry(hmawait, w->tasks.current));
+
     return result;
+}
+
+any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "__task_await_any_impl");
+    void* result;
+
+    if (!hmawait) {
+        hmawait = hm_alloc(HM_INITIAL_CAPACITY);
+    }
+
+    any_result ret = { 0 };
+    ret.select = __any_result_select_method;
+    ret.losers = malloc(sizeof(task_handle_t) * (num_task - 1));
+    
+    //Create a virtual task
+    task_handle_t virtual = __task_create_ex(
+        task_entry_ex(NULL, int, 0, 0),
+        0,
+        0
+    );
+
+    int already_finished = -1;
+
+    // Set the await groups
+    for (size_t i = 0; i < num_task; i++) {
+        assert(w->tasks.arr[handles[i]]);
+        if (STATUS_OF(handles[i]) == FINISHED) { already_finished = handles[i]; break; }
+        w->tasks.arr[handles[i]]->await_group = virtual;
+    }
+
+    if (already_finished != -1) {
+        result = w->tasks.arr[already_finished]->returned;
+        __task_destroy(already_finished);
+        __task_yield_impl();
+        ret.winner_return = result;
+        ret.winner = already_finished;
+        return ret;
+    }
+
+    // Set the status for waiting the virtual task.
+    w->tasks.arr[w->tasks.current]->w_reason = WAIT_TASK;
+    w->tasks.arr[w->tasks.current]->status = WAITING;
+    w->tasks.arr[w->tasks.current]->wait_for.task = virtual;
+
+    assert(hm_add_entry(hmawait, w->tasks.current, virtual));
+
+    _asm_ctx_switch_64(&w->sched_ctx, &w->tasks.arr[w->tasks.current]->ctx);
+
+    // Search the one that finished and clean up
+    size_t winner = (size_t)-1;
+    size_t n_losers = 0;
+    for (size_t i = 0; i < num_task; i++)
+    {
+        assert(w->tasks.arr[handles[i]]);
+
+        // Asign to winner the first finished tasks it sees.
+        if (STATUS_OF(handles[i]) == FINISHED) 
+        { 
+                if (winner == (size_t)-1)
+                    winner = handles[i];  
+        } else {
+            // Detach the losers
+            w->tasks.arr[handles[i]]->detached = 1;
+            // Add the losers to the list
+            ret.losers[n_losers++] = handles[i];
+        }
+        w->tasks.arr[handles[i]]->await_group = (size_t)-1;
+        
+    }
+
+    assert(winner != (size_t)-1);
+
+    ret.num_losers = n_losers;
+    ret.winner = winner;
+
+    if (!w->tasks.arr[winner] || w->tasks.arr[winner]->detached) {
+        asc_error(WARN_AWAITING_DETACHED_TASK, "__task_await_impl()", (any_t)winner);
+        w->tasks.arr[w->tasks.current]->status = READY;
+        ret.winner_return = calloc(1, 8);
+        return ret; 
+    }
+
+    result = w->tasks.arr[winner]->returned;
+
+    __task_destroy(winner);
+    __task_destroy(virtual);
+
+    w->tasks.arr[w->tasks.current]->w_reason = WAIT_NONE;
+    w->tasks.arr[w->tasks.current]->wait_for.task = 0;
+
+    ret.winner_return = result;
+
+    last_any_result = malloc(sizeof(any_result));
+    memcpy(last_any_result, &ret, sizeof(any_result));
+
+    assert(hm_remove_entry(hmawait, w->tasks.current));
+
+    return ret;
+    
 }
 
 void __task_wait_on_fd(int fd, uint32_t events) {
@@ -137,6 +261,7 @@ void task_trampoline(void) {
         // Signal that one task has finished
         pthread_mutex_lock(&w->sync.lock);
         w->sync.initial_remaining--;
+        w->tasks.running--;
         if (w->sync.initial_remaining == 0) {
             w->sync.initial_done = 1;
             pthread_cond_broadcast(&w->sync.cond);
@@ -151,15 +276,16 @@ void task_trampoline(void) {
 
     
 
-    // See if we are being waited for by another task
-    for (size_t i = 0; i < w->tasks.capacity; i++)
-    {
-        if (w->tasks.arr[i] == NULL) continue;
-        if (!_get_occupation_at(i)) continue;
-
-        if (STATUS_OF(i) == WAITING && IS_WAITING_FOR_US(w, i)) {
-            STATUS_OF(i) = READY;
+    // See if we are being waited for by another task, by the awaiting group.
+    if (t->await_group != (size_t)-1) {
+        for (size_t i = 0; i < hmawait->capacity; i++)
+        {
+            if (!hmawait->occ[i]) continue;
+            if (hmawait->map[i].v == t->await_group) {
+                STATUS_OF(hmawait->map[i].k) = READY;
+            }
         }
+        
     }
 
     if (t->detached) {
@@ -185,7 +311,7 @@ void task_detach() {
     // Alert any task that he have detached
     for (size_t i = 0; i < w->tasks.capacity; i++)
     {
-        if (_get_occupation_at(i) && w->tasks.arr[i] && IS_WAITING_FOR_US(w, i)) {
+        if (_get_occupation_at(i) && w->tasks.arr[i] && IS_WAITING_FOR(w, i, w->tasks.arr[w->tasks.current]->await_group)) {
             w->tasks.arr[i]->status = READY;
         }
     }
@@ -193,7 +319,113 @@ void task_detach() {
 
 void* __task_alloc_ret_val(size_t s, void* src) {
     void* dst = malloc(s);
+    assert(dst);
     if (!dst) return NULL;
     memcpy(dst, src, s);
     return dst;
 }
+
+void __task_drop_impl(task_handle_t th) {
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "__task_drop_impl()");
+
+    // Self drop call
+    if (th == (size_t)-1) { th = w->tasks.current;}
+    // Finish if invalid;
+    if (!_get_occupation_at(th) || STATUS_OF(th) == FINISHED) {
+        return;
+    }
+    //TODO: Make the virtual tasks error
+    assert(w->tasks.arr[th]);
+
+    // Eliminate from rotation (important because of recursion).
+    w->tasks.arr[th]->status = FINISHED;
+
+    TCB* t = w->tasks.arr[th];
+
+    // Unlink dependencies
+
+    switch (t->w_reason)
+    {
+    case WAIT_TASK:
+        __task_drop_impl(t->wait_for.task);
+        break;
+    case WAIT_TIMER:
+        t->wait_for.timestamp = 0;
+        break;
+    case WAIT_FD:
+        epoll_ctl(w->sync.epoll_fd, EPOLL_CTL_DEL, t->wait_for.fd, NULL);
+        release_fd(t->wait_for.fd);
+        break;
+    
+    default:
+        break;
+    }
+
+    // Ready up any that might be waiting for the dropped task
+    for (size_t i = 0; i < hmawait->capacity; i++)
+    {
+        if (!hmawait->occ[i]) continue;
+        if (hmawait->map[i].v == th && STATUS_OF(hmawait->map[i].k) != FINISHED) {
+            STATUS_OF(hmawait->map[i].k) = READY;
+        }
+    }
+
+    if (th < w->tasks.initial) { 
+        // Signal that one task has finished
+        pthread_mutex_lock(&w->sync.lock);
+        w->sync.initial_remaining--;
+        w->tasks.running--;
+        if (w->sync.initial_remaining == 0) {
+            w->sync.initial_done = 1;
+            pthread_cond_broadcast(&w->sync.cond);
+        }
+        pthread_mutex_unlock(&w->sync.lock);
+    }
+
+    if (th != w->tasks.current) {
+        __task_destroy(th);
+    }
+    
+    //Dispatcher will clean up
+    __task_yield_impl();
+}
+
+
+static void* __any_result_select_method() {
+    if (!last_any_result) return NULL;
+    void* ret = NULL;
+
+    for (size_t i = 0; i < last_any_result->num_losers; i++)
+    {
+        __task_drop_impl(last_any_result->losers[i]);
+    }
+
+    free(last_any_result->losers);
+    if (last_any_result->winner_return) {
+        ret = *(void**)last_any_result->winner_return;
+        free(last_any_result->winner_return);
+    }
+    free(last_any_result);
+    last_any_result = NULL;
+
+    return ret;
+
+}
+
+void __hm_await_free() {
+    hm_dealloc(&hmawait);
+}
+
+/*
+static void print_ctx(ctx_t* c) {
+    printf("CONTEXT:\n");
+    char* names[] = {"rsp", "rbp", "rbx", "r12", "r13", "r14", "r14"};
+    for (size_t i = 0; i < 7; i++)
+    {
+        printf("%s: %p", names[i], ((uint8_t**)c)[i]);
+        if ((i == 1 || i == 0) && ((uint8_t**)c)[i] != 0) printf(" -> 0x%012lx", *((uint64_t*)((uint8_t**)c)[i]));
+        printf("\n");
+    }
+    
+}*/

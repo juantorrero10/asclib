@@ -5,6 +5,7 @@
 
 void __task_yield_impl();
 void __task_wait_on_fd(int fd, uint32_t events);
+void __hm_await_free();
 
 
 __attribute__((noreturn))
@@ -12,10 +13,21 @@ void task_trampoline(void);
 
 
 
+
+
 typedef size_t task_handle_t;
 
+typedef struct _Await_Any_Result {
+    void* winner_return;
+    task_handle_t winner;
+    task_handle_t* losers;
+    size_t num_losers;
+    void* (*select)(void);
+} any_result;
+
 #define STATUS_OF(id) tl_worker->tasks.arr[id]->status
-#define IS_WAITING_FOR_US(w, id) w->tasks.arr[id]->w_reason == WAIT_TASK && w->tasks.arr[id]->wait_for.task == w->tasks.current 
+#define IS_WAITING_FOR(w, id, id2) w->tasks.arr[id]->w_reason == WAIT_TASK && w->tasks.arr[id]->wait_for.task == id2
+#define W_REASON(id) tl_worker->tasks.arr[id]->w_reason
 
 #define ASSERT_CONTEXT(worker, fn) do {\
     if (!worker) asc_error(PANIC_CONTEXT_VIOLATION, fn, (any_t)0); \

@@ -20,8 +20,6 @@ extern void _asm_ctx_switch_64(
     ctx_t* old
 );
 
-void print_ctx(ctx_t* c);
-
 void* dispatcher(void* arg);
 
 #endif // DISPATCHER_H_

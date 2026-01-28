@@ -21,9 +21,15 @@ TLS uint8_t* occupation_map = NULL;
 
 
 
-// Private more priviledge task creator.
+/** 
+ * @brief Task creator. 
+ * @param te IF te.fptr == NULL it will create a 'virtual task'
+ * @note a virtual task doesnt allocate a TCB it just occupies a spot.
+ * @attention virtual tasks will grow the array if there aren't any space left.
+*/
 task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t __create_guard_page) {
 
+    // Cap to 1.
     if (__create_guard_page > 1) __create_guard_page = 1;
 
     // If we decide to not override
@@ -31,6 +37,8 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
     
     worker_t* w = tl_worker;
     assert(w);
+
+    int virtual_task = 0;
 
     if (!occupation_map) {
         occupation_map = calloc(1, w->tasks.capacity);
@@ -40,7 +48,9 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
         }
         
     }
-
+    
+    if (!te.fptr) virtual_task = 1;
+    
     TCB t = {
         .fptr = te.fptr,
         .arg = te.value,
@@ -50,6 +60,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
         .wait_for.fd = -1,
         .ctx = { 0 },
         .dyn_created = 1,
+        .await_group = (size_t)-1,
         .detached = 0,
         .guard_page = __create_guard_page,
     };
@@ -79,9 +90,15 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
         
 
     }
-    w->tasks.arr[new_id] = malloc(sizeof(TCB));
-    memcpy(w->tasks.arr[new_id], &t, sizeof(TCB));
 
+    if (!virtual_task) {
+        w->tasks.arr[new_id] = malloc(sizeof(TCB));
+        memcpy(w->tasks.arr[new_id], &t, sizeof(TCB));
+    } else {
+        //IMPORTANT!!
+        w->tasks.arr[new_id] = NULL;
+    }
+    
     occupation_map[new_id] = 1;
 
     w->tasks.running++;
@@ -100,22 +117,22 @@ void __task_destroy(task_handle_t t) {
 
     TCB* ta = w->tasks.arr[t];
 
-    if (ta->w_reason == WAIT_FD) {
-        if (ta->wait_for.fd >= 0) {
-            epoll_ctl(w->sync.epoll_fd, EPOLL_CTL_DEL, ta->wait_for.fd, NULL);
+    if (ta != NULL) {
+        if (ta->w_reason == WAIT_FD) {
+            if (ta->wait_for.fd >= 0) {
+                epoll_ctl(w->sync.epoll_fd, EPOLL_CTL_DEL, ta->wait_for.fd, NULL);
+            }
         }
+        
+        // Reset to safe defaults before freeing memory
+        ta->w_reason = WAIT_NONE;
+        dealloc_stack(w->tasks.arr[t]);
+        w->tasks.arr[t]->stack = NULL;
     }
-    
-    // Reset to safe defaults before freeing memory
-    ta->w_reason = WAIT_NONE;
 
-
-    dealloc_stack(w->tasks.arr[t]);
-    
-    w->tasks.arr[t]->stack = NULL;
     occupation_map[t] = 0; // Free the slot for reuse
 
-
+    // If it's virtual it will see a NULL and do nothing
     free(w->tasks.arr[t]);
 
     w->tasks.arr[t] = NULL;

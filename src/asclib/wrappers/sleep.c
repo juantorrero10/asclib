@@ -8,9 +8,13 @@
 #include <dispatcher.h>
 #include <task_mem.h>
 #include <task_control.h>
+#include <collections.h>
 
+#define ENABLE_GUARD_PAGE 1
 
-static uint64_t asc_get_time_ms() {
+TLS heap_t* timers = NULL;
+
+uint64_t get_time_ms() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
@@ -20,13 +24,16 @@ static uint64_t asc_get_time_ms() {
 void* __internal_async_sleep(void* __arg) {
     uint64_t ms = *((uint64_t*)&__arg);
 
-    
+    assert(timers);
+
     worker_t* w = tl_worker;
     TCB* t = w->tasks.arr[w->tasks.current];
 
-    t->wait_for.timestamp = asc_get_time_ms() + ms;
+    t->wait_for.timestamp = get_time_ms() + ms;
     t->status = WAITING;
     t->w_reason = WAIT_TIMER;
+
+    heap_push(w, timers, w->tasks.current);
 
     __task_yield_impl();
 
@@ -43,7 +50,7 @@ task_handle_t asc_sleep(uint64_t ms) {
     
     // Create concurrent task, without page guard and tiny stack.
     return __task_create_ex(
-        task_entry_ex(__internal_async_sleep, uint64_t, ms, 0), 512, 0);
+        task_entry_ex(__internal_async_sleep, uint64_t, ms, 0), 512, ENABLE_GUARD_PAGE);
     
 }
 
@@ -51,7 +58,7 @@ task_handle_t asc_sleep(uint64_t ms) {
 
 void try_wake_up(TCB* candidate) {
 
-    if (candidate->w_reason == WAIT_TIMER && asc_get_time_ms() >= candidate->wait_for.timestamp) {
+    if (candidate->w_reason == WAIT_TIMER && get_time_ms() >= candidate->wait_for.timestamp) {
         candidate->wait_for.timestamp = 0;
         candidate->w_reason = WAIT_NONE;
         candidate->status = READY;

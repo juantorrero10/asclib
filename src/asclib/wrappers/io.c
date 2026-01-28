@@ -12,15 +12,15 @@
 #include <task_mem.h>
 #include <ascerr.h>
 #include <log.h>
+#include <wrappers.h>
+#include <collections.h>
 
-#define ENABLE_GUARD_PAGE 0
+#define ENABLE_GUARD_PAGE 1
 
 #define HASHMAP_INIT_CAPACITY 6
-TLS fd_hash_map* fdh = NULL;
+TLS uu_hash_map* fdh = NULL;
 
 //Forward decl
-static void claim_fd(int fd, size_t task);
-static void release_fd(int fd);
 static void set_nonblock(int fd);
 static void set_block(int fd);
 
@@ -160,75 +160,13 @@ task_handle_t asc_read(int fd, void* buff, size_t __n) {
         task_entry_ex(__internal_read, struct _Async_Read_Params*, ap, 0), 4096, ENABLE_GUARD_PAGE);
 }
 
-static int hm_add_entry(fd_hash_map* hm, int fd, size_t task) {
-
-    int first_hole = -1;
-
-    // Search if key is present
-    for (size_t i = 0; i < hm->capacity; i++)
-    {
-        if (hm->occ[i] == 0) { 
-            if(first_hole == -1) {
-                first_hole = i; 
-            } continue; 
-        }
-        if (hm->map[i].k_fd == fd) { 
-            return 0; 
-        }
-    }
-
-    // Expand if full
-    if (first_hole == -1) {
-        size_t old_cap = hm->capacity;
-        hm->capacity *= 2;
-
-        hm->map = realloc(hm->map, sizeof(fd_hash_entry) * hm->capacity);
-        hm->occ = realloc(hm->occ, hm->capacity);
-        memset(hm->occ + old_cap, 0, old_cap);
-        first_hole = old_cap;
-    }
-
-    //Copy
-    fd_hash_entry e = { .k_fd = fd, .v_task = task };
-
-    memcpy(hm->map + first_hole, &e, sizeof(fd_hash_entry));
-    hm->occ[first_hole] = 1;
-    hm->size++;
-    return 1;
-}
-
-static int hm_remove_entry(fd_hash_map* hm, int fd) {
-    int found = -1;
-
-    // Search for key
-    for (size_t i = 0; i < hm->capacity; i++)
-    {
-        if (hm->occ[i] == 0) { continue; }
-        if (hm->map[i].k_fd == fd) { found = i; break;}
-    }
-    if (found == -1) return 0;
-
-    hm->size--;
-    hm->occ[found] = 0;
-
-    return 1;
-}
-
-
-static void claim_fd(int fd, size_t task) {
+void claim_fd(int fd, size_t task) {
 
     if (!fdh) {
-        fdh = malloc(sizeof(fd_hash_map));
-        fdh->map = malloc(HASHMAP_INIT_CAPACITY * sizeof(fd_hash_entry));
-        fdh->occ = malloc(HASHMAP_INIT_CAPACITY);
-        memset(fdh->occ, 0, HASHMAP_INIT_CAPACITY);
-        fdh->capacity = HASHMAP_INIT_CAPACITY;
-        fdh->size = 0;
+        fdh = hm_alloc(HASHMAP_INIT_CAPACITY);
     }
 
     assert(fdh);
-
-    INFO("fd: %d, task: %zu", fd, task);
 
     int n = hm_add_entry(fdh, fd, task);
 
@@ -237,17 +175,13 @@ static void claim_fd(int fd, size_t task) {
     };
 }
 
-static void release_fd(int fd) {
+void release_fd(int fd) {
     assert(fdh);
-    assert(hm_remove_entry(fdh, fd));
+    assert(hm_remove_entry(fdh, (size_t)fd));
 }
 
 void __io_free_hashmap() {
-    assert(fdh);
-    free(fdh->map);
-    free(fdh->occ);
-    free(fdh);
-    fdh = NULL;
+    hm_dealloc(&fdh);
 }
 
 static void set_nonblock(int fd) {

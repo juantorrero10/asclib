@@ -5,6 +5,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#define __DEBUG
+
 #include <defs.h>
 #include <dispatcher.h>
 #include <task_mem.h>
@@ -37,6 +39,7 @@ worker_t* worker_create(size_t n_tasks, ...) {
             .ctx = { 0 },
             .w_reason = WAIT_NONE,
             .wait_for.fd = -1,
+            .await_group = (size_t)-1,
             .guard_page = 1,
             .stack_size = te.n_pages * PAGE_SIZE, //No one
         };
@@ -63,11 +66,14 @@ worker_t* worker_create(size_t n_tasks, ...) {
 }
 
 void worker_destroy(worker_t* w) {
+    assert(w);
+
     if (!w->sync.all_done && w->sync.initial_done) {
         asc_error(ERR_TASK_OUTLIVED_DESTROYER, "worker_destroy()", (any_t)0); 
-    } else if (!w->sync.initial_done){
+    } else if (w->sync.initial_remaining){
         asc_error(PANIC_UNAWAITED_DESTROY, "worker_destroy()", (any_t)0);
     }
+
 
     for (size_t i = 0; i < w->tasks.capacity; i++)
     {
@@ -81,6 +87,7 @@ void worker_destroy(worker_t* w) {
             dealloc_stack(w->tasks.arr[i]);
             
         }
+        free(w->tasks.arr[i]->arg); 
         free(w->tasks.arr[i]);
     }
     free(w->returned_array);
@@ -122,7 +129,10 @@ task_result* worker_await(worker_t* w) {
     pthread_mutex_lock(&w->sync.lock);
     while(!w->sync.initial_done) pthread_cond_wait(&w->sync.cond, &w->sync.lock);
     pthread_mutex_unlock(&w->sync.lock);
-    w->sync.all_done = 1;
+
+    if (w->tasks.running == 0) {
+        w->sync.all_done = 1;
+    }
     
     // We can return the results of the original tasks.
     // The detached tasks's retuned values get lost anyway.

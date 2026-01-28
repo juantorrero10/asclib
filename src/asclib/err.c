@@ -6,18 +6,13 @@
 
 #include <ascerr.h>
 #include <dispatcher.h>
+#include <collections.h>
 
-extern TLS fd_hash_map* fdh;
+extern TLS uu_hash_map* fdh;
 
 static ssize_t get_owner(int fd) {
     assert(fdh);
-    for (size_t i = 0; i < fdh->size; i++)
-    {
-        if (fdh->occ[i] == 0) continue;
-        if (fdh->map[i].k_fd == fd) return fdh->map[i].v_task;
-    }
-
-    return -1;
+    return hm_get_v(fdh, (size_t)fd);
 }
 
 
@@ -74,6 +69,11 @@ void asc_error(asclib_err_t err, const char* function, any_t value) {
     case PANIC_STACK_OVERFLOW_RSP_BOUND:
         RT_ERR("Detected stack pointer at illegal location, exceding stack boundaries. \033[1m\033[97mrsp @ %p\033[0m.", function, value.ptr);
         panic_linux("\033[4mStack overflow\033[0m, a bigger stack can be allocated with \033[1m\033[97mtask_new_ex(...)\033[0m or \033[1m\033[97mtask_entry_ex(...)\033[0m.", function);
+        break;
+
+    case PANIC_EXPECT_NULL:
+        RT_ERR("Task<%zu> returned nothing, yet a return value is being expected.", function, value.u64);
+        panic_linux("Tried to dereference a NULL pointer, \033[4meither return something with \033[1m\033[97mtask_return( ... )\033[0m\033[4m or don't use \033[1m\033[97mawait_ret()\033[0m", function);
         break;
 
     case WARN_AWAITING_DETACHED_TASK:
