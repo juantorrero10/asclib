@@ -4,11 +4,11 @@
 #include <assert.h>
 
 
-/* #define __DEBUG
-#define __DEBUG_STACK
-#define __DEBUG_DEALLOC
-#define __DEBUG_ALLOC 
- */
+//#define __DEBUG
+//#define __DEBUG_STACK
+//#define __DEBUG_DEALLOC
+//#define __DEBUG_ALLOC 
+ 
 #include <defs.h>
 #include <task_control.h>
 #include <dispatcher.h>
@@ -42,7 +42,7 @@ void create_stack_frame(size_t stack_size, TCB* t, uint32_t alloc_guard) {
 
     #ifdef __DEBUG_ALLOC
     if (t->guard_page)
-        OKAY("Guard page -> (%p - %p), Stack (%p - %p)", stack - PAGE_SIZE, stack - 1, stack, sp);
+        OKAY("Guard page -> (%p - %p), Stack (%p - %p), total %zu", stack - PAGE_SIZE, stack - 1, stack, sp, stack_size + alloc_guard * PAGE_SIZE);
     else
         OKAY("Stack (%p - %p)", stack, sp);
     #endif
@@ -87,7 +87,7 @@ void sigsegv_stackoverflow(int sigs, siginfo_t* si, void* unused) {
         return;
     }
 
-    TCB* t = w->tasks[w->current];
+    TCB* t = w->tasks.arr[w->tasks.current];
     uintptr_t fault_addr = (uintptr_t)si->si_addr;
     uintptr_t guard_start = (uintptr_t)t->stack - (t->guard_page * PAGE_SIZE);
     uintptr_t guard_end = (uintptr_t)t->stack;
@@ -95,8 +95,8 @@ void sigsegv_stackoverflow(int sigs, siginfo_t* si, void* unused) {
     // Correct check: Did the fault happen inside the task's specific guard page?
     if (t->guard_page && fault_addr >= guard_start && fault_addr < guard_end) {
         char buff[50];
-        sprintf(buff, "task<%zu>: %p", w->current, t->fptr);
-        asc_error(PANIC_STACK_OVERFLOW_GUARDPAGE, buff, fault_addr);
+        sprintf(buff, "task<%zu>: %p", w->tasks.current, t->fptr);
+        asc_error(PANIC_STACK_OVERFLOW_GUARDPAGE, buff, (any_t)fault_addr);
     } else {
         signal(sigs, SIG_DFL);
         raise(sigs);

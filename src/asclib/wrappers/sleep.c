@@ -22,10 +22,11 @@ void* __internal_async_sleep(void* __arg) {
 
     
     worker_t* w = tl_worker;
-    TCB* t = w->tasks[w->current];
-    
-    t->wake_at = asc_get_time_ms() + ms;
+    TCB* t = w->tasks.arr[w->tasks.current];
+
+    t->wait_for.timestamp = asc_get_time_ms() + ms;
     t->status = WAITING;
+    t->w_reason = WAIT_TIMER;
 
     __task_yield_impl();
 
@@ -49,8 +50,10 @@ task_handle_t asc_sleep(uint64_t ms) {
 
 
 void try_wake_up(TCB* candidate) {
-    if (asc_get_time_ms() >= candidate->wake_at) {
-        candidate->wake_at = 0;
+
+    if (candidate->w_reason == WAIT_TIMER && asc_get_time_ms() >= candidate->wait_for.timestamp) {
+        candidate->wait_for.timestamp = 0;
+        candidate->w_reason = WAIT_NONE;
         candidate->status = READY;
     }
 }

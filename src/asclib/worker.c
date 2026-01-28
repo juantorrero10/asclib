@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #include <defs.h>
 #include <dispatcher.h>
@@ -27,70 +28,80 @@ worker_t* worker_create(size_t n_tasks, ...) {
         task_entry_t te = va_arg(args, task_entry_t);
         assert(te.fptr != NULL);
         tasklisk[i] = malloc(sizeof(TCB));
-        //Minimally initialized
+        // Minimal required initalization
         TCB template = (TCB){ 
             .fptr = te.fptr, 
             .arg = te.value, 
             .status = UNITIALIZED, 
             .dyn_created = 0,
             .ctx = { 0 },
-            .wake_at = 0,
+            .w_reason = WAIT_NONE,
+            .wait_for.fd = -1,
             .guard_page = 1,
-            .stack_size = te.n_pages * PAGE_SIZE,
-            .waiting_for = (size_t)-1 //No one
+            .stack_size = te.n_pages * PAGE_SIZE, //No one
         };
 
         memcpy(tasklisk[i], &template, sizeof(TCB));
     }
 
-    pthread_mutex_init(&ret->sync_lock, NULL);
-    pthread_cond_init(&ret->sync_cond, NULL);
-    ret->initial_remaining = n_tasks; // Count down from here
-    ret->initial_done = 0;
-    ret->current = n_tasks - 1; // so that RR will rollback to 0 in first round 
-    ret->n_tasks = ret->initial_tasks = n_tasks;
-    ret->capacity = ret->n_tasks;
-    ret->tasks = tasklisk;
+    //Syncing
+    pthread_mutex_init(&ret->sync.lock, NULL);
+    pthread_cond_init(&ret->sync.cond, NULL);
+    ret->sync.initial_remaining = n_tasks; // Count down from here
+
+    //Epoll
+    ret->sync.epoll_fd = epoll_create1(0);
+    ASSERT_SYSCALL(ret, ret->sync.epoll_fd == -1, "epoll_create1");
+    ret->sync.initial_done = 0;
+    ret->tasks.current = n_tasks - 1; // so that RR will rollback to 0 in first round 
+    ret->tasks.running = ret->tasks.initial = n_tasks;
+    ret->tasks.capacity = ret->tasks.running;
+    ret->tasks.arr = tasklisk;
     ret->th = 0;
 
     return ret;
 }
 
 void worker_destroy(worker_t* w) {
-    if (!w->all_finished && w->initial_done) {
-        asc_error(ERR_TASK_OUTLIVED_DESTROYER, "worker_destroy()", 0); 
-    } else if (!w->initial_done){
-        asc_error(PANIC_UNAWAITED_DESTROY, "worker_destroy()", 0);
+    if (!w->sync.all_done && w->sync.initial_done) {
+        asc_error(ERR_TASK_OUTLIVED_DESTROYER, "worker_destroy()", (any_t)0); 
+    } else if (!w->sync.initial_done){
+        asc_error(PANIC_UNAWAITED_DESTROY, "worker_destroy()", (any_t)0);
     }
 
-    for (size_t i = 0; i < w->capacity; i++)
+    for (size_t i = 0; i < w->tasks.capacity; i++)
     {
-        if (w->tasks[i] == NULL) continue;
-        if (i < w->initial_tasks) {
+        if (w->tasks.arr[i] == NULL) continue;
+        if (i < w->tasks.initial) {
             if (w->returned_array[i] != NULL) {
                 
                 free(w->returned_array[i]);
                 
             }
-            dealloc_stack(w->tasks[i]);
+            dealloc_stack(w->tasks.arr[i]);
             
         }
-        free(w->tasks[i]);
+        free(w->tasks.arr[i]);
     }
     free(w->returned_array);
-    free(w->tasks);
+    free(w->tasks.arr);
     free(w->emergency_stack);
+    close(w->sync.epoll_fd);
+    // OS deletion of threads is not inmediate after thread returns
+    // It doesn't trigger an error because we are exiting gracefully from thread.
+    // The wait time is very minimal. The OS has to do some cleanup.
+    pthread_join(w->th, NULL); 
     free(w);
 }
 
 void worker_run(worker_t* w) {
 
     if (!w) return;
-    if (!w->n_tasks || w->tasks == NULL) return;
+    if (!w->tasks.running || w->tasks.arr == NULL) return;
 
-    pthread_mutex_lock(&w->sync_lock);
-    w->initial_done = 0;
-    pthread_mutex_unlock(&w->sync_lock);
+    pthread_mutex_lock(&w->sync.lock);
+    w->sync.initial_done = 0;
+    pthread_mutex_unlock(&w->sync.lock);
     
     //Spawn a thread
     pthread_create(&w->th, NULL, dispatcher, (void*)w);
@@ -101,16 +112,17 @@ task_result* worker_await_all(worker_t* w)
 {
     if (!w) return NULL;
     pthread_join(w->th, NULL);
-    w->all_finished = 1;
+    w->sync.all_done = 1;
     return w->returned_array;
 }
 
 task_result* worker_await(worker_t* w) {
 
     if (!w) return NULL;
-    pthread_mutex_lock(&w->sync_lock);
-    while(!w->initial_done) pthread_cond_wait(&w->sync_cond, &w->sync_lock);
-    pthread_mutex_unlock(&w->sync_lock);
+    pthread_mutex_lock(&w->sync.lock);
+    while(!w->sync.initial_done) pthread_cond_wait(&w->sync.cond, &w->sync.lock);
+    pthread_mutex_unlock(&w->sync.lock);
+    w->sync.all_done = 1;
     
     // We can return the results of the original tasks.
     // The detached tasks's retuned values get lost anyway.

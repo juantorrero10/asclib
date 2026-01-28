@@ -1,44 +1,37 @@
 #include "asclib.h"
 #include "asc_runtime.h"
-#include "unistd.h"
 #include <stdio.h>
 
-typedef struct {
-    int a;
-    int b;
-    int c;
-    double d;
-} some_info;
 
-
-TASK(children) {
-    ignore_arg();
-    printf("Heey\n");
-    await(asc_sleep(task_arg(uint64_t)));
-    printf("Ended execution!!\n");
-    task_return(42, int);
-}
-
-TASK(father) {
+async(reader) {
     ignore_arg();
 
-    int a = 0;
-    task_handle h1 = task_new(children, uint64_t, 1000); (void)h1;
-    
+    char buff[1024];
+    printf(">>>: ");
+    ssize_t s = await_ret(ssize_t, asc_read(0, buff, 1024));
 
-    printf("Hello from father\n");
+    printf("Read %zd bytes -> %s", s, buff);
 
-    a = await_ret(int, h1);
-    //a = await(int, h2);
-
-    printf("Children retuned: %d\n", a);
-
-    some_info i = {0, 1, 2, 6.6f };
-
-    task_return( i, some_info );
+    task_return_void();    
 }
 
-TASK(counter) {
+async(writer) {
+    char* file = task_arg(char*);
+
+    int fd = asc_open(file, O_WRONLY | O_APPEND, 0);
+    if (fd == -1) task_return_void();
+
+    char buff[] = "This is some data!\n";
+
+    printf("[Writer] trying to write: %s", buff);
+    ssize_t written = await_ret(ssize_t, asc_write(fd, buff, 19));
+    printf("[Writter] Written %zd bytes\n", written);
+
+
+    task_return(written, ssize_t);
+}
+
+async(counter) {
     ignore_arg();
 
     for (size_t i = 0; i < 10; i++)
@@ -52,6 +45,25 @@ TASK(counter) {
 }
 
 
+async(father) {
+    ignore_arg();
+
+    task_handle timeout = asc_sleep(2000);
+    printf("Hello from father\n");
+
+    
+    await(task_new(reader, int, 0));
+    await(task_new(reader, int, 0));
+    
+    await(timeout);
+
+    printf("Timed out\n");
+    task_return_void();
+
+}
+
+
+
 
 int main() {
 
@@ -62,14 +74,11 @@ int main() {
         );
     
     worker_run(w);
-    some_info i =  task_recover_from_worker(worker_await(w), 0, some_info);
+    worker_await(w);
 
-    printf("a: %d\n", i.a);
-    printf("b: %d\n", i.b);
-    printf("c: %d\n", i.c);
-    printf("d: %lf\n", i.d);
+    printf("Returned!\n");
 
-    worker_await_all(w);
     worker_destroy(w);
-    
+
+    printf("End program!!\n");
 }

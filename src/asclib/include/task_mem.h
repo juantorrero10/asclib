@@ -14,5 +14,6 @@ void __alloc_occupation_map();
 void __free_occupation_map();
 uint8_t _get_occupation_at(size_t id);
 void _set_occupation_at(size_t id, uint8_t val);
+void __io_free_hashmap();
 
 #endif // TASK_MEM_H_

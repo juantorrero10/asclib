@@ -1,10 +1,11 @@
 TARGET = ctx_switch
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror -std=c17 -Isrc/asclib/include -g -m64
-
+# -fsanitize=address -static-libasan
 
 # --- C files ---
-SRC = main.c asclib/worker.c asclib/dispatcher.c asclib/task_control.c asclib/task_mem.c asclib/err.c asclib/io/sleep.c asclib/task_stack.c
+CORE = main.c asclib/worker.c asclib/dispatcher.c asclib/task_control.c asclib/task_mem.c asclib/err.c asclib/task_stack.c
+SRC = $(CORE) asclib/wrappers/sleep.c asclib/wrappers/io.c 
 OBJ_DIR = build/obj
 BIN_DIR = build/bin
 SRC_DIR = src

@@ -71,7 +71,7 @@ void* __task_await_impl(task_handle th);
 task_handle __task_create(task__arg__constructor te);
 
 // Task can only have one funtion signature.
-#define TASK(name) void* name(void* __arg)
+#define async(name) void* name(void* __arg)
 
 // Recover the argument
 #define task_arg(type) *((type*)&__arg)
@@ -131,7 +131,7 @@ task_handle __task_create(task__arg__constructor te);
 
 
 // WORKER FUNCTION
-worker_t* worker_create(size_t n_tasks, ...);
+worker_t* worker_create(size_t running, ...);
 void worker_destroy(worker_t* worker);
 void worker_run(worker_t* w);
 task_result* worker_await_all(worker_t* w);
