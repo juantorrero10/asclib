@@ -4,7 +4,7 @@ CFLAGS = -Wall -Wextra -Werror -std=c17 -Isrc/asclib/include -g -m64
 # -fsanitize=address -static-libasan
 
 # --- C files ---
-CORE = main.c asclib/worker.c asclib/dispatcher.c asclib/task_control.c asclib/task_mem.c asclib/err.c asclib/task_stack.c asclib/collections.c
+CORE = demo/main.c asclib/worker.c asclib/dispatcher.c asclib/task_control.c asclib/task_mem.c asclib/err.c asclib/task_stack.c asclib/collections.c
 SRC = $(CORE) asclib/wrappers/sleep.c asclib/wrappers/io.c 
 OBJ_DIR = build/obj
 BIN_DIR = build/bin
@@ -48,7 +48,10 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 $(OBJ_DIR) $(BIN_DIR):
 	@mkdir -p $@
 
-$(OBJ_DIR)/asclib: | $(OBJ_DIR)
+$(OBJ_DIR)/demo | $(OBJ_DIR):
+	@mkdir -p $@
+
+$(OBJ_DIR)/asclib: | $(OBJ_DIR)/demo
 	@mkdir -p $@
 
 $(OBJ_DIR)/asclib/io: | $(OBJ_DIR)/asclib

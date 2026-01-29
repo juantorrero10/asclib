@@ -56,6 +56,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
         .arg = te.value,
         .status = UNITIALIZED,
         .stack_size = ov_stack_size,
+        .arg_is_malloced = te.arg_malloced,
         .w_reason = WAIT_NONE,
         .wait_for.fd = -1,
         .ctx = { 0 },
@@ -126,6 +127,7 @@ void __task_destroy(task_handle_t t) {
         
         // Reset to safe defaults before freeing memory
         ta->w_reason = WAIT_NONE;
+        if (ta->arg_is_malloced) free(ta->arg);
         dealloc_stack(w->tasks.arr[t]);
         w->tasks.arr[t]->stack = NULL;
     }

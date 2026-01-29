@@ -115,7 +115,7 @@ void worker_run(worker_t* w) {
 }
 
 
-task_result* worker_await_all(worker_t* w) 
+task_result_t* worker_await_all(worker_t* w) 
 {
     if (!w) return NULL;
     pthread_join(w->th, NULL);
@@ -123,7 +123,7 @@ task_result* worker_await_all(worker_t* w)
     return w->returned_array;
 }
 
-task_result* worker_await(worker_t* w) {
+task_result_t* worker_await(worker_t* w) {
 
     if (!w) return NULL;
     pthread_mutex_lock(&w->sync.lock);

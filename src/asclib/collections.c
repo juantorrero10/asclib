@@ -11,6 +11,7 @@ uu_hash_map* hm_alloc(size_t capacity) {
     memset(ret->occ, 0, capacity);
     ret->capacity = capacity;
     ret->size = 0;
+    ret->highest_index = 0;
 
     return ret;
 }
@@ -58,6 +59,7 @@ int hm_add_entry(uu_hash_map* hm, size_t k, size_t v) {
 
     memcpy(hm->map + first_hole, &e, sizeof(uu_hash_entry));
     hm->occ[first_hole] = 1;
+    if ((size_t)first_hole > hm->highest_index) hm->highest_index = first_hole;
     hm->size++;
     return 1;
 }
@@ -75,6 +77,8 @@ int hm_remove_entry(uu_hash_map* hm, size_t fd) {
 
     hm->size--;
     hm->occ[found] = 0;
+
+    if ((size_t)found >= hm->highest_index) hm->highest_index = found - 1;
 
     return 1;
 }

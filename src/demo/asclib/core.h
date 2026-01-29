@@ -1,5 +1,5 @@
-#ifndef WORKER_H_
-#define WORKER_H_
+#ifndef ASCLIB_CORE_H_
+#define ASCLIB_CORE_H_
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -8,7 +8,7 @@
 #define __ASCLIB_COUNT_ARGS_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, N, ...) N */
 
 typedef struct _Task_Ctx_Block worker_t;
-typedef void* task_result;
+typedef void* task_result_t;
 typedef struct { size_t val; } task_handle;
 
 
@@ -17,6 +17,7 @@ typedef struct _Task_Entry_ {
     size_t arg_size;
     void* value;
     size_t n_pages;
+    int arg_malloced;
 } task__arg__constructor;
 
 typedef struct _Await_Any_Result {
@@ -38,33 +39,40 @@ typedef struct _Await_Any_Result {
  * Union eliminates UB ensuring correct aligment 
  * and zeroing-out unused bytes for smaller formats like int, short, char
 */
-#define task_entry(task_function, type, _value)                       \
-({                                                                   \
-    task_function##_args* _heap_packet = malloc(sizeof(task_function##_args)); \
-    *_heap_packet = (task_function##_args){                          \
+#define task_entry(task_function, type, _value)                     \
+({                                                                  \
+    __ASCLIB__##task_function##__ARGDECL* _heap_packet =            \
+    malloc(sizeof(__ASCLIB__##task_function##__ARGDECL));           \
+    *_heap_packet = (__ASCLIB__##task_function##__ARGDECL){         \
         ._d = 0                                                     \
-    };                                                               \
-                                                                     \
-    *(type*)((uint8_t*)_heap_packet + sizeof(size_t)) = (_value);     \
-                                                                     \
-    (task__arg__constructor){                                        \
-        .fptr = task_function,                                       \
-        .value = (void*)_heap_packet,                                \
-        .arg_size = sizeof(task_function##_args),                    \
-        .n_pages = TASK_DEFAULT_PAGES                                \
-    };                                                               \
+    };                                                              \
+                                                                    \
+    *(type*)((uint8_t*)_heap_packet + sizeof(size_t)) = (_value);   \
+                                                                    \
+    (task__arg__constructor){                                       \
+        .fptr = task_function,                                      \
+        .value = (void*)_heap_packet,                               \
+        .arg_size = sizeof(__ASCLIB__##task_function##__ARGDECL),   \
+        .n_pages = TASK_DEFAULT_PAGES                               \
+    };                                                              \
 })
 
-#define task_entry_ex(task_function, type, value, n_stack_pages)   \
-({                                                                 \
-    union { int64_t i64; type v; } _u = { .i64 = 0 };              \
-    _u.v = (value);                                                \
-    (task__arg__constructor){                                      \
-        .fptr = task_function,                                     \
-        .arg_size = sizeof(type),                                  \
-        .passing_value = _u.i64,                                   \
-        .n_pages = n_stack_pages                                   \
-    };                                                             \
+#define task_entry_ex(task_function, type, _value, n_stack_pages)   \
+({                                                                  \
+    __ASCLIB__##task_function##__ARGDECL* _heap_packet =            \
+    malloc(sizeof(__ASCLIB__##task_function##__ARGDECL));           \
+    *_heap_packet = (__ASCLIB__##task_function##__ARGDECL){         \
+        ._d = 0                                                     \
+    };                                                              \
+                                                                    \
+    *(type*)((uint8_t*)_heap_packet + sizeof(size_t)) = (_value);   \
+                                                                    \
+    (task__arg__constructor){                                       \
+        .fptr = task_function,                                      \
+        .value = (void*)_heap_packet,                               \
+        .arg_size = sizeof(__ASCLIB__##task_function##__ARGDECL),   \
+        .n_pages = n_stack_pages                                    \
+    };                                                              \
 })
 
 // Recover the return value of one of the initial tasks
@@ -87,10 +95,16 @@ void __task_drop_impl(task_handle th);
 // === HELPERS ====
 #define __ASCLIB_COUNT_ARGS(...) (sizeof((task_handle[]){__VA_ARGS__}) / sizeof(task_handle))
 
+// For Header files (.h). Prototype function declaration
+#define decl_async(return_type, name, ...)                                \
+    typedef struct { size_t _d; __VA_ARGS__; } __ASCLIB__##name##__ARGDECL; \
+    void* name(void* __arg)
+
+// For source files (.c). Body function declaration
 #define async(name, ...)                                \
-    typedef struct { size_t _d; __VA_ARGS__; } name##_args; \
+    typedef struct { size_t _d; __VA_ARGS__; } __ASCLIB__##name##__ARGDECL; \
     void* name(void* __arg) {                           \
-        name##_args* __args = (name##_args*)__arg;        \
+        __ASCLIB__##name##__ARGDECL* __args = (__ASCLIB__##name##__ARGDECL*)__arg;        \
         (void)__args;
 
     
@@ -109,10 +123,10 @@ void __task_drop_impl(task_handle th);
     do { \
         type __temp = var; \
         return __task_alloc_ret_val(sizeof(type), &__temp); \
-    } while(0)
+    } while(0); }
 
 // Return nothing
-#define task_return_void() return NULL;
+#define task_return_void() return NULL; }
 
 
 
@@ -160,9 +174,9 @@ void __task_drop_impl(task_handle th);
  * Usage: task_spawn(my_func, .x = 10, .y = "hello");
  */
 #define task_spawn(name, ...) ({ \
-    name##_args* _a = malloc(sizeof(name##_args)); \
-    *_a = (name##_args){ __VA_ARGS__ }; \
-    task__arg__constructor _te = { .fptr = name, .value = _a, .arg_size = sizeof(name##_args), .n_pages = 2 }; \
+    __ASCLIB__##name##__ARGDECL* _a = malloc(sizeof(__ASCLIB__##name##__ARGDECL)); \
+    *_a = (__ASCLIB__##name##__ARGDECL){ __VA_ARGS__ }; \
+    task__arg__constructor _te = { .fptr = name, .value = _a, .arg_size = sizeof(__ASCLIB__##name##__ARGDECL), .n_pages = 2 , .arg_malloced = 1}; \
     __task_create(_te); \
 })
 /**
@@ -197,8 +211,8 @@ void __task_drop_impl(task_handle th);
 worker_t* worker_create(size_t running, ...);
 void worker_destroy(worker_t* worker);
 void worker_run(worker_t* w);
-task_result* worker_await_all(worker_t* w);
-task_result* worker_await(worker_t* w);
+task_result_t* worker_await_all(worker_t* w);
+task_result_t* worker_await(worker_t* w);
 
 
 #endif // WORKER_H_

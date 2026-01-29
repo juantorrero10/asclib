@@ -6,7 +6,7 @@
 
 typedef struct _Task_Ctx_Block TCB;
 
-typedef void* task_result;
+typedef void* task_result_t;
 
 typedef enum {
     UNITIALIZED = 0,
@@ -27,6 +27,7 @@ typedef enum {
 typedef struct _Task_Ctx_Block {
     void* (*fptr)(void* arg);
     void* arg;            // Always 8-bytes
+    int arg_is_malloced;
     ctx_t ctx;
 
     // Stack data

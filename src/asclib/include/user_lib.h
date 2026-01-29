@@ -7,7 +7,7 @@
 
 
 typedef struct _Task_Ctx_Block worker_t;
-typedef void* task_result;
+typedef void* task_result_t;
 typedef size_t task_handle;
 
 typedef enum {
@@ -110,8 +110,8 @@ task_handle __task_create(task__arg__constructor te);
 worker_t* worker_create(size_t running, ...);
 void worker_destroy(worker_t* worker);
 void worker_run(worker_t* w);
-task_result* worker_await_all(worker_t* w);
-task_result* worker_await(worker_t* w);
+task_result_t* worker_await_all(worker_t* w);
+task_result_t* worker_await(worker_t* w);
 
 
 #endif // WORKER_H_

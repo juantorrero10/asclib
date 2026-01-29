@@ -32,6 +32,7 @@ typedef struct _Task_Entry_ {
     size_t arg_size;
     void* value;
     size_t n_pages;
+    int arg_malloced;
 } task_entry_t;
 
 #define task_entry_ex(task_function, type, pvalue, n_stack_pages)  \

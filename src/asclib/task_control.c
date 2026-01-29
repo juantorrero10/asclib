@@ -273,15 +273,14 @@ void task_trampoline(void) {
         t->returned = res;
     }
     t->status = FINISHED;
-
     
 
     // See if we are being waited for by another task, by the awaiting group.
     if (t->await_group != (size_t)-1) {
-        for (size_t i = 0; i < hmawait->capacity; i++)
+        for (ssize_t i = hmawait->highest_index; i >= 0; i--)
         {
             if (!hmawait->occ[i]) continue;
-            if (hmawait->map[i].v == t->await_group) {
+            if (hmawait->map[i].v == t->await_group && STATUS_OF(hmawait->map[i].k) != FINISHED) {
                 STATUS_OF(hmawait->map[i].k) = READY;
             }
         }
@@ -307,14 +306,19 @@ void task_detach() {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "detach");
     w->tasks.arr[w->tasks.current]->detached = 1;
+    size_t curr;
 
     // Alert any task that he have detached
-    for (size_t i = 0; i < w->tasks.capacity; i++)
+    for (ssize_t i = hmawait->highest_index; i >= 0; i--)
     {
-        if (_get_occupation_at(i) && w->tasks.arr[i] && IS_WAITING_FOR(w, i, w->tasks.arr[w->tasks.current]->await_group)) {
-            w->tasks.arr[i]->status = READY;
+        if (!hmawait->occ[i]) continue;
+        curr = hmawait->map[i].k;
+        if (hmawait->map[i].v == w->tasks.arr[w->tasks.current]->await_group
+            && STATUS_OF(curr) == WAITING && _get_occupation_at(curr)) {
+            STATUS_OF(curr) = READY;
         }
     }
+    
 }
 
 void* __task_alloc_ret_val(size_t s, void* src) {
@@ -362,8 +366,9 @@ void __task_drop_impl(task_handle_t th) {
         break;
     }
 
-    // Ready up any that might be waiting for the dropped task
-    for (size_t i = 0; i < hmawait->capacity; i++)
+    // Ready up any that might be waiting for the dropped task.
+    // Reverse search, more efficient since awaiting tends to follow a stack, although not exactly a stack.
+    for (ssize_t i = hmawait->highest_index; i >= 0; i--)
     {
         if (!hmawait->occ[i]) continue;
         if (hmawait->map[i].v == th && STATUS_OF(hmawait->map[i].k) != FINISHED) {

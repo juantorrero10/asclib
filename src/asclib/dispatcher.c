@@ -116,10 +116,10 @@ void* dispatcher(void* arg) {
     worker_t* w = (worker_t*)arg;
     assert(w);
     tl_worker = w;
-    w->returned_array = calloc(w->tasks.running, sizeof(task_result));
+    w->returned_array = calloc(w->tasks.running, sizeof(task_result_t));
     assert(w->returned_array);
 
-    //set_sigsegv_handler();
+    set_sigsegv_handler();
     
     TCB* t = NULL;
 

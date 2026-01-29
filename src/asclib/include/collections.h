@@ -14,6 +14,7 @@ typedef struct {
     uu_hash_entry* map;
     size_t size;
     size_t capacity;
+    size_t highest_index;
     uint8_t* occ;
 } uu_hash_map;
 
