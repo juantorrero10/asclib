@@ -18,8 +18,8 @@ async(main_task, int value)
     printf("Racing two tasks, value = %d\n", arg(value));
 
     // task_spawn now correctly builds the task_entry_t
-    task_handle h1 = task_spawn(sleeper, .ms = 200, .label = "Long sleeper");
-    task_handle h2 = task_spawn(sleeper, .ms = 100, .label = "Short sleeper");
+    task_handle_t h1 = task_spawn(sleeper, .ms = 200, .label = "Long sleeper");
+    task_handle_t h2 = task_spawn(sleeper, .ms = 100, .label = "Short sleeper");
     
     uint64_t ms = (uint64_t)await_any(h1, h2).select();
 

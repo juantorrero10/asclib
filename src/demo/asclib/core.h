@@ -9,7 +9,7 @@
 
 typedef struct _Task_Ctx_Block worker_t;
 typedef void* task_result_t;
-typedef struct { size_t val; } task_handle;
+typedef struct { size_t val; } task_handle_t;
 
 
 typedef struct _Task_Entry_ {
@@ -22,8 +22,8 @@ typedef struct _Task_Entry_ {
 
 typedef struct _Await_Any_Result {
     void* winner_return;
-    task_handle winner;
-    task_handle* losers;
+    task_handle_t winner;
+    task_handle_t* losers;
     size_t num_losers;
     void* (*select)(void);
 } any_result;
@@ -84,16 +84,16 @@ typedef struct _Await_Any_Result {
 void __task_yield_impl();
 void task_detach();
 void* __task_alloc_ret_val(size_t s, void* src);
-void* __task_await_impl(task_handle th, int expect);
-any_result __task_await_any_impl(task_handle* handles, size_t count);
-task_handle __task_create(task__arg__constructor te);
-void __task_drop_impl(task_handle th);
+void* __task_await_impl(task_handle_t th, int expect);
+any_result __task_await_any_impl(task_handle_t* handles, size_t count);
+task_handle_t __task_create(task__arg__constructor te);
+void __task_drop_impl(task_handle_t th);
 
 
 // =========================== MACROS/ERGONOMICS =============================00
 
 // === HELPERS ====
-#define __ASCLIB_COUNT_ARGS(...) (sizeof((task_handle[]){__VA_ARGS__}) / sizeof(task_handle))
+#define __ASCLIB_COUNT_ARGS(...) (sizeof((task_handle_t []){__VA_ARGS__}) / sizeof(task_handle_t ))
 
 // For Header files (.h). Prototype function declaration
 #define decl_async(return_type, name, ...)                                \
@@ -158,7 +158,7 @@ void __task_drop_impl(task_handle th);
  *             if you want more you need to manually call `__task_await_impl();`
  */
 #define await_any(...) ({ \
-    task_handle _group[] = { __VA_ARGS__ }; \
+    task_handle_t _group[] = { __VA_ARGS__ }; \
     __task_await_any_impl(_group, __ASCLIB_COUNT_ARGS(__VA_ARGS__)); \
 })
 
@@ -184,7 +184,7 @@ void __task_drop_impl(task_handle th);
  * @param n_pages N of memory pages (normally 4Kb) allocated as a stack.
  */
 #define task_new_ex(fptr, arg_type, value, n_pages) ({\
-    task_handle __val = __task_create(task_entry_ex(fptr, arg_type, value, n_pages)); \
+    task_handle_t __val = __task_create(task_entry_ex(fptr, arg_type, value, n_pages)); \
     __val; \
 })
 
