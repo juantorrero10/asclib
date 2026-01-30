@@ -20,6 +20,7 @@ typedef enum {
     WAIT_NONE,
     WAIT_TASK,
     WAIT_FD,
+    WAIT_CHANNEL,
     WAIT_TIMER
 } wait_reason_t;
 

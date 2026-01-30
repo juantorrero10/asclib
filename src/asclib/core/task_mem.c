@@ -85,7 +85,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
         w->tasks.capacity *= 2;
 
         // Memset to 0, destructors rely on NULL values!!
-        memset(occupation_map + w->tasks.running, 0, w->tasks.capacity - w->tasks.running);
+        memset(occupation_map + old_c, 0, w->tasks.capacity - old_c);
         memset(w->tasks.arr + old_c, 0, sizeof(TCB*) * (w->tasks.capacity - old_c));
         new_id = w->tasks.running;
         
@@ -94,6 +94,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
 
     if (!virtual_task) {
         w->tasks.arr[new_id] = malloc(sizeof(TCB));
+        printf("[NEW TCB] ID %d at %p\n", new_id, (void*)w->tasks.arr[new_id]);
         memcpy(w->tasks.arr[new_id], &t, sizeof(TCB));
     } else {
         //IMPORTANT!!

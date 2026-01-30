@@ -143,8 +143,15 @@ task_handle_t asc_write(int fd, void* buff, size_t __n) {
 
     ap->reset_doblock = (fd == 1 || fd == 2) ? 1 : 0;
 
+    task_entry_t te = {
+        .fptr = __internal_write,
+        .value = ap,
+        .arg_size = sizeof(void*),
+        .n_pages = 0,
+    };
+
     return __task_create_ex(
-        task_entry_ex(__internal_write, struct _Async_Write_Params*, ap, 0), 4096, ENABLE_GUARD_PAGE
+        te, 4096, ENABLE_GUARD_PAGE
     );
 }
 
@@ -156,8 +163,15 @@ task_handle_t asc_read(int fd, void* buff, size_t __n) {
     ap->n = __n;
     ap->reset_doblock = (fd == 0);
 
+    task_entry_t te = {
+        .fptr = __internal_read,
+        .value = ap,
+        .arg_size = sizeof(void*),
+        .n_pages = 0,
+    };
+
     return __task_create_ex(
-        task_entry_ex(__internal_read, struct _Async_Read_Params*, ap, 0), 4096, ENABLE_GUARD_PAGE);
+        te, 4096, ENABLE_GUARD_PAGE);
 }
 
 void claim_fd(int fd, size_t task) {

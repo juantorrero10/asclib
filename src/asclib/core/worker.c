@@ -46,6 +46,7 @@ worker_t* worker_create(size_t n_tasks, ...) {
 
         memcpy(tasklisk[i], &template, sizeof(TCB));
     }
+    va_end(args);
 
     //Syncing
     pthread_mutex_init(&ret->sync.lock, NULL);
@@ -61,6 +62,8 @@ worker_t* worker_create(size_t n_tasks, ...) {
     ret->tasks.capacity = ret->tasks.running;
     ret->tasks.arr = tasklisk;
     ret->th = 0;
+    
+    
 
     return ret;
 }
@@ -87,7 +90,6 @@ void worker_destroy(worker_t* w) {
             dealloc_stack(w->tasks.arr[i]);
             
         }
-        free(w->tasks.arr[i]->arg); 
         free(w->tasks.arr[i]);
     }
     free(w->returned_array);

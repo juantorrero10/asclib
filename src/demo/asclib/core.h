@@ -11,6 +11,8 @@ typedef struct _Task_Ctx_Block worker_t;
 typedef void* task_result_t;
 typedef struct { size_t val; } task_handle_t;
 
+struct _ASCLIB_Opaque_ { void* __reserved; }; 
+
 
 typedef struct _Task_Entry_ {
     void* (*fptr)(void*);
@@ -39,39 +41,37 @@ typedef struct _Await_Any_Result {
  * Union eliminates UB ensuring correct aligment 
  * and zeroing-out unused bytes for smaller formats like int, short, char
 */
-#define task_entry(task_function, type, _value)                     \
+#define task_entry(task_function, ...)                              \
 ({                                                                  \
-    __ASCLIB__##task_function##__ARGDECL* _heap_packet =            \
-    malloc(sizeof(__ASCLIB__##task_function##__ARGDECL));           \
-    *_heap_packet = (__ASCLIB__##task_function##__ARGDECL){         \
-        ._d = 0                                                     \
+    __ASCLIB__##task_function##__ARGDECL __packet =                 \
+                    (__ASCLIB__##task_function##__ARGDECL){         \
+        ._d = 0,                                                    \
+        __VA_ARGS__                                                 \
     };                                                              \
                                                                     \
-    *(type*)((uint8_t*)_heap_packet + sizeof(size_t)) = (_value);   \
                                                                     \
     (task__arg__constructor){                                       \
         .fptr = task_function,                                      \
-        .value = (void*)_heap_packet,                               \
+        .value = &__packet,                                         \
         .arg_size = sizeof(__ASCLIB__##task_function##__ARGDECL),   \
         .n_pages = TASK_DEFAULT_PAGES                               \
     };                                                              \
 })
 
-#define task_entry_ex(task_function, type, _value, n_stack_pages)   \
+#define task_entry_ex(task_function, stack_pages, ...)              \
 ({                                                                  \
-    __ASCLIB__##task_function##__ARGDECL* _heap_packet =            \
-    malloc(sizeof(__ASCLIB__##task_function##__ARGDECL));           \
-    *_heap_packet = (__ASCLIB__##task_function##__ARGDECL){         \
-        ._d = 0                                                     \
+    __ASCLIB__##task_function##__ARGDECL __packet =                 \
+                    (__ASCLIB__##task_function##__ARGDECL){         \
+        ._d = 0,                                                    \
+        __VA_ARGS__                                                 \
     };                                                              \
                                                                     \
-    *(type*)((uint8_t*)_heap_packet + sizeof(size_t)) = (_value);   \
                                                                     \
     (task__arg__constructor){                                       \
         .fptr = task_function,                                      \
-        .value = (void*)_heap_packet,                               \
+        .value = &__packet,                                         \
         .arg_size = sizeof(__ASCLIB__##task_function##__ARGDECL),   \
-        .n_pages = n_stack_pages                                    \
+        .n_pages = stack_pages                                      \
     };                                                              \
 })
 
@@ -176,7 +176,7 @@ void __task_drop_impl(task_handle_t th);
 #define task_spawn(name, ...) ({ \
     __ASCLIB__##name##__ARGDECL* _a = malloc(sizeof(__ASCLIB__##name##__ARGDECL)); \
     *_a = (__ASCLIB__##name##__ARGDECL){ __VA_ARGS__ }; \
-    task__arg__constructor _te = { .fptr = name, .value = _a, .arg_size = sizeof(__ASCLIB__##name##__ARGDECL), .n_pages = 2 , .arg_malloced = 1}; \
+    task__arg__constructor _te = { .fptr = name, .value = _a, .arg_size = sizeof(__ASCLIB__##name##__ARGDECL), .n_pages = TASK_DEFAULT_PAGES , .arg_malloced = 1}; \
     __task_create(_te); \
 })
 /**

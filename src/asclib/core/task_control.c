@@ -128,10 +128,16 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
     any_result ret = { 0 };
     ret.select = __any_result_select_method;
     ret.losers = malloc(sizeof(task_handle_t) * (num_task - 1));
+
+    task_entry_t tvir = {
+        .fptr = NULL,
+        .arg_malloced = 0,
+        .n_pages = 0
+    };
     
     //Create a virtual task
     task_handle_t virtual = __task_create_ex(
-        task_entry_ex(NULL, int, 0, 0),
+        tvir,
         0,
         0
     );
@@ -309,6 +315,7 @@ void task_detach() {
     size_t curr;
 
     // Alert any task that he have detached
+    if (!hmawait) return;    
     for (ssize_t i = hmawait->highest_index; i >= 0; i--)
     {
         if (!hmawait->occ[i]) continue;
@@ -421,16 +428,3 @@ static void* __any_result_select_method() {
 void __hm_await_free() {
     hm_dealloc(&hmawait);
 }
-
-/*
-static void print_ctx(ctx_t* c) {
-    printf("CONTEXT:\n");
-    char* names[] = {"rsp", "rbp", "rbx", "r12", "r13", "r14", "r14"};
-    for (size_t i = 0; i < 7; i++)
-    {
-        printf("%s: %p", names[i], ((uint8_t**)c)[i]);
-        if ((i == 1 || i == 0) && ((uint8_t**)c)[i] != 0) printf(" -> 0x%012lx", *((uint64_t*)((uint8_t**)c)[i]));
-        printf("\n");
-    }
-    
-}*/

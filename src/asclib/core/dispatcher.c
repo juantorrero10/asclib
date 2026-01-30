@@ -8,9 +8,9 @@
 #include <signal.h>
 #include <sys/epoll.h>
 
-//#define __DEBUG
-//#define __DEBUG_STATES
-//#define __DEBUG_OCCMAP
+#define __DEBUG
+#define __DEBUG_STATES
+#define __DEBUG_OCCMAP
 
 #include <dispatcher.h>
 #include <log.h>
@@ -25,15 +25,32 @@
 #define TIMERS_INITIAL_CAP 16
 extern TLS heap_t* timers;
 
+// Managed by task_control.c
+extern TLS uu_hash_map* hmawait;
+
 
 // Thread-local worker variable
 TLS worker_t* tl_worker = NULL;
+
+
+
+static void print_ctx(ctx_t* c) {
+    printf("CONTEXT:\n");
+    char* names[] = {"rsp", "rbp", "rbx", "r12", "r13", "r14", "r14"};
+    for (size_t i = 0; i < 7; i++)
+    {
+        printf("%s: %016lx", names[i], (uint64_t)((uint8_t**)c)[i]);
+        if ((i == 1 || i == 0) && ((uint8_t**)c)[i] != 0) printf(" -> 0x%012lx", *((uint64_t*)((uint8_t**)c)[i]));
+        printf("\n");
+    }
+    
+}
 
 #ifdef __DEBUG_STATES
 static void log_decision_state(worker_t* w, char* buff) {
     size_t spaces = 0;
     char* names[] = {"UNITIALIZED", "RUNNING", "READY", "WAITING", "FINISHED"};
-    char* wait_for[] = {"WAIT_NONE", "WAIT_TASK", "WAIT_FD", "WAIT_TIMER"};
+    char* wait_for[] = {"WAIT_NONE", "WAIT_TASK", "WAIT_FD",  "WAIT_CHANNEL", "WAIT_TIMER"};
     size_t sz = 0;
     uint64_t num_to_show = 0;
     for (size_t i = 0; i < w->tasks.capacity; i++)
@@ -118,8 +135,10 @@ void* dispatcher(void* arg) {
     tl_worker = w;
     w->returned_array = calloc(w->tasks.running, sizeof(task_result_t));
     assert(w->returned_array);
+    
 
-    set_sigsegv_handler();
+    //set_sigsegv_handler();
+    hmawait = NULL;
     
     TCB* t = NULL;
 
@@ -148,16 +167,7 @@ void* dispatcher(void* arg) {
         size_t buffer = w->tasks.current;
         log_decision_state(w, states);
         #endif        
-        
-        #ifdef __DEBUG_OCCMAP
-        printf("[*] Occupation map: ");
-        for (size_t i = 0; i < w->tasks.capacity; i++)
-        {
-            printf("%d, ", _get_occupation_at(i));
-        }
-        printf("\n");
-        
-        #endif
+    
 
         // Next task election.
         for (size_t i = 0; i < w->tasks.capacity; i++)
@@ -189,6 +199,16 @@ void* dispatcher(void* arg) {
         last_dec.prev = buffer;
         #endif
 
+        #ifdef __DEBUG_OCCMAP
+        printf("[*] Occupation map: ");
+        for (size_t i = 0; i < w->tasks.capacity; i++)
+        {
+            printf("%d, ", _get_occupation_at(i));
+        }
+        printf("\n");
+        
+        #endif
+
         if (all_done) {
             break; // we're done
         }
@@ -207,6 +227,10 @@ void* dispatcher(void* arg) {
         // If unitialized this'll go to task_trampoline.
         // Else it will go to __task_yield_impl, after the context switch
         t->status = RUNNING;
+        INFO("TASK%zu ctx", tl_worker->tasks.current);
+        print_ctx(&t->ctx);
+        INFO("SCHED ctx");
+        print_ctx(&w->sched_ctx);
         
         _asm_ctx_switch_64(
             &t->ctx,

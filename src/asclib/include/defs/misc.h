@@ -35,16 +35,21 @@ typedef struct _Task_Entry_ {
     int arg_malloced;
 } task_entry_t;
 
-#define task_entry_ex(task_function, type, pvalue, n_stack_pages)  \
-({                                                                 \
-    union { void* i64; type v; } _u = { .i64 = 0 };              \
-    _u.v = (pvalue);                                                \
-    (task_entry_t){                                                \
-        .fptr = task_function,                                     \
-        .arg_size = sizeof(type),                                  \
-        .value = _u.i64,                                           \
-        .n_pages = n_stack_pages                                   \
-    };                                                             \
+#define task_entry_ex(task_function, stack_pages, ...)              \
+({                                                                  \
+    __ASCLIB__##task_function##__ARGDECL __packet =                 \
+                    (__ASCLIB__##task_function##__ARGDECL){         \
+        ._d = 0,                                                    \
+        __VA_ARGS__                                                 \
+    };                                                              \
+                                                                    \
+                                                                    \
+    (task__arg__constructor){                                       \
+        .fptr = task_function,                                      \
+        .value = &__packet,                                         \
+        .arg_size = sizeof(__ASCLIB__##task_function##__ARGDECL),   \
+        .n_pages = stack_pages                                      \
+    };                                                              \
 })
 
 #endif // !MISC_H_

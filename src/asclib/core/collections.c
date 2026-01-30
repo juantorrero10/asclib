@@ -1,8 +1,12 @@
 #include <string.h>
+#include <stdio.h>
 #include <collections.h>
 #include <defs/worker.h>
 
-/*------------------------------HASH MAPS ------------------------- */
+#define __DEBUG
+#include <log.h>
+
+/* ==================== HASH MAP (GENERAL) ==============================0 */
 uu_hash_map* hm_alloc(size_t capacity) {
     uu_hash_map* ret = NULL;
     ret = malloc(sizeof(uu_hash_map));
@@ -92,7 +96,7 @@ size_t hm_get_v(uu_hash_map* hm, size_t k) {
     return (size_t)-1;
 }
 
-// =========================== HEAP ==============================================0
+// =========================== TIMER HEAP (specific) ==============================================0
 
 heap_t* heap_alloc(size_t initial_capacity) {
     heap_t* ret = malloc(sizeof(heap_t));
@@ -155,4 +159,50 @@ void heap_push(worker_t* w, heap_t* hp, size_t task) {
         i = p;
     }
     hp->data[i] = task;
+}
+
+// -------------------------- u64 arrlist (general) ------------------------------------
+u64_arrlist_t* u64al_alloc(size_t initial_capacity) {
+    u64_arrlist_t*  ret = malloc(sizeof(u64_arrlist_t));
+    ret->data = malloc(sizeof(uint64_t) * initial_capacity);
+    ret->capacity = initial_capacity;
+    ret->size = 0;
+
+    return ret;
+}
+
+void u64al_dealloc(u64_arrlist_t** arr) {
+    free((*arr)->data);
+    free((*arr));
+    *arr = NULL;
+}
+
+void u64al_append(u64_arrlist_t* arr, uint64_t entry) {
+    if (arr->size >= arr->capacity) {
+        arr->data = realloc(arr->data, sizeof(uint64_t) * 2 * arr->capacity);
+        arr->capacity *= 2;
+    }
+    arr->data[arr->size++] = entry;
+}
+
+uint64_t u64_trim(u64_arrlist_t* arr, int _set_zero) {
+    if (arr->size == 0) return (uint64_t)-1;
+    uint64_t ret = arr->data[arr->size-1];
+    if (_set_zero) arr->data[arr->size-1] = 0UL;
+    arr->size--;
+
+    return ret;
+}
+
+uint64_t u64al_pop_front(u64_arrlist_t* arr) {
+    INFO("Entered pdf");
+    if (arr->size == 0) return (uint64_t)-1;
+    uint64_t ret = arr->data[0];
+
+    if (arr->size > 1) {
+        memmove(arr->data, arr->data + 1, sizeof(uint64_t) * (arr->size - 1));
+    }
+    arr->size--;
+    OKAY("ExitPF");
+    return ret;
 }

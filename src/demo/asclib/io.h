@@ -5,7 +5,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include "asclib.h"
 
 task_handle asc_read(int fd, void* buff, size_t __n);
 task_handle asc_write(int fd, void* buff, size_t __n);

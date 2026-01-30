@@ -10,6 +10,7 @@
 #include <task_control.h>
 #include <collections.h>
 
+
 #define ENABLE_GUARD_PAGE 1
 
 TLS heap_t* timers = NULL;
@@ -23,6 +24,7 @@ uint64_t get_time_ms() {
 // Set wake up timer and return to dispatcher
 void* __internal_async_sleep(void* __arg) {
     uint64_t ms = *((uint64_t*)&__arg);
+
 
     assert(timers);
 
@@ -47,10 +49,17 @@ void* __internal_async_sleep(void* __arg) {
  */
 task_handle_t asc_sleep(uint64_t ms) {
     if (ms == 0) return -1;
+
+    task_entry_t te = {
+        .fptr = __internal_async_sleep,
+        .value = (void*)ms,
+        .arg_size = sizeof(void*),
+        .n_pages = 0,
+        .arg_malloced = 0
+    };
     
     // Create concurrent task, without page guard and tiny stack.
-    return __task_create_ex(
-        task_entry_ex(__internal_async_sleep, uint64_t, ms, 0), 512, ENABLE_GUARD_PAGE);
+    return __task_create_ex(te, 4096, ENABLE_GUARD_PAGE);
     
 }
 

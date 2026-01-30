@@ -1,4 +1,4 @@
-TARGET = ctx_switch
+TARGET = asclib_demo
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror -std=c17 -Isrc/asclib/include -g -m64 -MMD -MP
 
@@ -46,7 +46,12 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.asm
 $(BIN_DIR):
 	@mkdir -p $@
 
+# --- Run ---
+run: all
+	@echo "Running $(TARGET)..."
+	@./$(BIN)
+
 clean:
 	rm -rf build
 
-.PHONY: all clean
+.PHONY: all clean run
