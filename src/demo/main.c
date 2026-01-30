@@ -21,9 +21,11 @@ async(slow_consumer, mpsc_rx_ref_t rx_ref) {
 
 async(fast_producer, mpsc_tx_t tx; int id) {
     detach;
+    int j = 0;
     for(int i = 0; i < 5; i++) {
-        printf("[P%d] Sending %d...\n", arg(id), i);
-        await(asc_mpsc_send(arg(tx), &i));
+        printf("[P%d] Sending %d...\n", arg(id), (arg(id) * 10) + i);
+        j = (i + (arg(id) * 10));
+        await(asc_mpsc_send(arg(tx), &j));
         printf("[P%d] Sent %d (didn't block)\n", arg(id), i);
     }
     // This 6th one SHOULD block because capacity is 5
@@ -38,11 +40,11 @@ async(fast_producer, mpsc_tx_t tx; int id) {
 
 async(main_task, int value; const char* val) {
 
-    mpsc_pair_t pair = mpsc_new(sizeof(int), 20, 1);
+    mpsc_pair_t pair = mpsc_new(sizeof(int), 5, 1);
 
     task_handle_t t1 = task_spawn(slow_consumer, .rx_ref = mpsc_move_rx(pair));
-    task_handle_t t2 = task_spawn(fast_producer, .tx = mpsc_clone_tx(pair), .id = 101);
-    task_handle_t t3 = task_spawn(fast_producer, .tx = mpsc_clone_tx(pair), .id = 102);
+    task_handle_t t2 = task_spawn(fast_producer, .tx = mpsc_clone_tx(pair), .id = 1);
+    task_handle_t t3 = task_spawn(fast_producer, .tx = mpsc_clone_tx(pair), .id = 2);
 
     await(t1); await(t2); await(t3);  
 
