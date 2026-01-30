@@ -4,9 +4,9 @@
 #include <assert.h>
 
 
-#define __DEBUG
+//#define __DEBUG
 //#define __DEBUG_DEALLOC
-#define __DEBUG_ALLOC 
+//#define __DEBUG_ALLOC 
  
 #include <defs.h>
 #include <task_control.h>

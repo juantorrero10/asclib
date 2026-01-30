@@ -7,28 +7,7 @@
 /* #define __ASCLIB_COUNT_ARGS(...) __ASCLIB_COUNT_ARGS_IMPL(__VA_ARGS__, 8, 7, 6, 5, 4, 3, 2, 1, 0)
 #define __ASCLIB_COUNT_ARGS_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, N, ...) N */
 
-typedef struct _Task_Ctx_Block worker_t;
 typedef void* task_result_t;
-typedef struct { size_t val; } task_handle_t;
-
-struct _ASCLIB_Opaque_ { void* __reserved; }; 
-
-
-typedef struct _Task_Entry_ {
-    void* (*fptr)(void*);
-    size_t arg_size;
-    void* value;
-    size_t n_pages;
-    int arg_malloced;
-} task__arg__constructor;
-
-typedef struct _Await_Any_Result {
-    void* winner_return;
-    task_handle_t winner;
-    task_handle_t* losers;
-    size_t num_losers;
-    void* (*select)(void);
-} any_result;
 
 #define TASK_DEFAULT_PAGES 2
 
@@ -86,7 +65,7 @@ void task_detach();
 void* __task_alloc_ret_val(size_t s, void* src);
 void* __task_await_impl(task_handle_t th, int expect);
 any_result __task_await_any_impl(task_handle_t* handles, size_t count);
-task_handle_t __task_create(task__arg__constructor te);
+task_handle_t __task_create(task_entry_t te);
 void __task_drop_impl(task_handle_t th);
 
 
@@ -123,7 +102,7 @@ void __task_drop_impl(task_handle_t th);
     do { \
         type __temp = var; \
         return __task_alloc_ret_val(sizeof(type), &__temp); \
-    } while(0); }
+    } while(0);
 
 // Return nothing
 #define task_return_void() return NULL; }

@@ -33,6 +33,8 @@ typedef struct {
 } u64_arrlist_t;
 
 typedef struct _ASCLIB_mpsc_Channel {
+    uint32_t magic;
+
     void* buffer;
     size_t packet_size;
     size_t capacity;

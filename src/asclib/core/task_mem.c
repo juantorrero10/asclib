@@ -38,6 +38,10 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
     worker_t* w = tl_worker;
     assert(w);
 
+    if (w->tasks.current == 4) {
+        printf("cuatro\n");
+    }
+
     int virtual_task = 0;
 
     if (!occupation_map) {
@@ -94,7 +98,6 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
 
     if (!virtual_task) {
         w->tasks.arr[new_id] = malloc(sizeof(TCB));
-        printf("[NEW TCB] ID %d at %p\n", new_id, (void*)w->tasks.arr[new_id]);
         memcpy(w->tasks.arr[new_id], &t, sizeof(TCB));
     } else {
         //IMPORTANT!!

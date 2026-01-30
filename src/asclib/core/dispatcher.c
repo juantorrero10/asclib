@@ -8,9 +8,10 @@
 #include <signal.h>
 #include <sys/epoll.h>
 
-#define __DEBUG
-#define __DEBUG_STATES
-#define __DEBUG_OCCMAP
+//#define __DEBUG
+//#define __DEBUG_STATES
+//#define __DEBUG_OCCMAP
+//#define __DEBUG_CTX
 
 #include <dispatcher.h>
 #include <log.h>
@@ -33,7 +34,7 @@ extern TLS uu_hash_map* hmawait;
 TLS worker_t* tl_worker = NULL;
 
 
-
+#ifdef __DEBUG_CTX
 static void print_ctx(ctx_t* c) {
     printf("CONTEXT:\n");
     char* names[] = {"rsp", "rbp", "rbx", "r12", "r13", "r14", "r14"};
@@ -45,7 +46,7 @@ static void print_ctx(ctx_t* c) {
     }
     
 }
-
+#endif
 #ifdef __DEBUG_STATES
 static void log_decision_state(worker_t* w, char* buff) {
     size_t spaces = 0;
@@ -137,7 +138,7 @@ void* dispatcher(void* arg) {
     assert(w->returned_array);
     
 
-    //set_sigsegv_handler();
+    set_sigsegv_handler();
     hmawait = NULL;
     
     TCB* t = NULL;
@@ -227,10 +228,12 @@ void* dispatcher(void* arg) {
         // If unitialized this'll go to task_trampoline.
         // Else it will go to __task_yield_impl, after the context switch
         t->status = RUNNING;
+        #ifdef __DEBUG_CTX
         INFO("TASK%zu ctx", tl_worker->tasks.current);
         print_ctx(&t->ctx);
         INFO("SCHED ctx");
         print_ctx(&w->sched_ctx);
+        #endif
         
         _asm_ctx_switch_64(
             &t->ctx,

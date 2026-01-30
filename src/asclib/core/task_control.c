@@ -48,6 +48,8 @@ void* __task_await_impl(task_handle_t th, int expect) {
     worker_t* w = tl_worker;
     void* result;
 
+    if (th == (task_handle_t)-1) return NULL;
+
     if (!hmawait) {
         hmawait = hm_alloc(HM_INITIAL_CAPACITY);
     }

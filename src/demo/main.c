@@ -5,47 +5,48 @@
 #include "asclib/sync.h"
 
 
-async(producer, mpsc_tx_t tx; int id) {
-
-    printf("[producer%d]: ready to send data\n", arg(id));
-    for (size_t i = 0; i < 10; i++)
-    {
-        await(asc_sleep(1000));
-        await(asc_mpsc_send( arg(tx), &arg(id) ));    
+async(slow_consumer, mpsc_rx_ref_t rx_ref) {
+    mpsc_rx_t rx = mpsc_take_rx(arg(rx_ref));
+    int buf;
+    // Wait a bit to let producers fill the buffer
+    await(asc_sleep(2000)); 
+    for(int i = 0; i < 10; i++) {
+        await(asc_mpsc_recv(rx, &buf));
+        printf("[Consumer] Popped: %d\n", buf);
+        await(asc_sleep(100)); // Slow consumption
     }
-    
-    mpsc_drop_tx(arg(tx));
-    printf("[producer%d]: closed connection.\n", arg(id));
+    mpsc_drop_rx(rx);
     task_return_void();
 }
 
-async(consumer, mpsc_rx_ref_t rx) {
-
-    mpsc_rx_t rx = mpsc_take_rx(arg(rx));
-    int buffer;
-    printf("[Consumer]: waiting for data to arrive\n");
-    for (size_t i = 0; i < 20; i++)
-    {
-        await(asc_mpsc_recv(rx, &buffer));
-        printf("[Consumer]: received: %d", buffer);
+async(fast_producer, mpsc_tx_t tx; int id) {
+    detach;
+    for(int i = 0; i < 5; i++) {
+        printf("[P%d] Sending %d...\n", arg(id), i);
+        await(asc_mpsc_send(arg(tx), &i));
+        printf("[P%d] Sent %d (didn't block)\n", arg(id), i);
     }
-    mpsc_drop_rx(rx);
-    printf("[Consumer]: closed connection\n.");
+    // This 6th one SHOULD block because capacity is 5
+    int val = 999;
+    printf("[P%d] Sending 6th (expecting block)...\n", arg(id));
+    await(asc_mpsc_send(arg(tx), &val));
+    printf("[P%d] 6th Sent! (unblocked)\n", arg(id));
+    
+    mpsc_drop_tx(arg(tx));
     task_return_void();
 }
 
 async(main_task, int value; const char* val) {
 
-    mpsc_pair_t pair = mpsc_new(sizeof(int), 20);
+    mpsc_pair_t pair = mpsc_new(sizeof(int), 20, 1);
 
-    task_handle_t t1 = task_spawn(consumer, .rx = mpsc_move_rx(pair));
-    task_handle_t t2 = task_spawn(producer, .tx = mpsc_clone_tx(pair), .id = 101);
-    task_handle_t t3 = task_spawn(producer, .tx = mpsc_clone_tx(pair), .id = 102);
+    task_handle_t t1 = task_spawn(slow_consumer, .rx_ref = mpsc_move_rx(pair));
+    task_handle_t t2 = task_spawn(fast_producer, .tx = mpsc_clone_tx(pair), .id = 101);
+    task_handle_t t3 = task_spawn(fast_producer, .tx = mpsc_clone_tx(pair), .id = 102);
 
-    await(t1);
-    await(t2);
-    await(t3);
+    await(t1); await(t2); await(t3);  
 
+    mpsc_assert_closed(pair);
     task_return_void();
 }
 
@@ -55,9 +56,8 @@ int main() {
     worker_t* w = worker_create(1, task_entry(main_task, .value = 2, .val = "String."));
 
     worker_run(w);
-    worker_await(w);
-
     printf("Returned!\n");
+    worker_await_all(w);
     worker_destroy(w);
     printf("End program!!\n");
     return 0;

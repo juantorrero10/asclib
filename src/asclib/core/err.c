@@ -76,9 +76,19 @@ void asc_error(asclib_err_t err, const char* function, any_t value) {
         panic_linux("Tried to dereference a NULL pointer, \033[4meither return something with \033[1m\033[97mtask_return( ... )\033[0m\033[4m or don't use \033[1m\033[97mawait_ret()\033[0m", function);
         break;
 
+    case PANIC_GENERIC_ASSERTION:
+        RT_ERR("Assertion failed: '%s'", function, (char*)value.ptr);
+        panic_linux("This operation cannot complete while the assertion fails.", function);
+        break;
+
     case WARN_AWAITING_DETACHED_TASK:
         RT_WRN("The task<%ld> marked as 'detached' is being awaited. Don't \033[1m\033[97mawait()\033[0m it or don't use \033[1m\033[97mdetach\033[0m", value.i64);
         EXPL("In this situation the await() call is ignored.");
+        break;
+
+    case WARN_TRACKING_UNMARKED_OBJECT:
+        RT_WRN("Tried tracking the closure of object of type \033[1m\033[97m<%s>\033[0m but it was not marked when created.", (char*)value.ptr);
+        EXPL("Revise the parameters of the object's creation");
         break;
     default:
         break;
@@ -107,7 +117,64 @@ void asc_io_error(asclib_err_io_t ioerr, const char* function, any_t value, any_
     default:
         break;
     }
-    
-    
+}
 
+void asc_chan_error(asclib_err_channels_t cerr, const char* function, any_t value, any_t value2, any_t value3) {
+    switch (cerr) {
+        /* --- PANICS (Execution stops) --- */
+        
+        case CHAN_PANIC_UNAUTHORIZED:
+            // value: Requester ID, value2: Owner ID
+            RT_ERR("Ownership Violation: Task<%ld> tried to access channel owned by Task<%ld>.", function, value.i64, value2.i64);
+            EXPL("MPSC channels are \033[1mStrictly Single Consumer\033[0m.");
+            EXPL("Ensure you called \033[1m\033[97mmpsc_take_rx()\033[0m or that you aren't sharing the RX end.");
+            panic_linux("Illegal cross-task channel access.", function);
+            break;
+
+        case CHAN_PANIC_STATE_CORRUPTION:
+            // value: Task_id, value2: expected status, value3: gotten status
+            RT_ERR("State Machine Corruption: Task<%ld> in waiter list should be [%d], but is [%d].", 
+                   function, value.i64, value2.ts, value3.ts);
+            EXPL("This usually indicates a \033[4mDouble-Wakeup\033[0m or an internal runtime race condition.");
+            panic_linux("Channel internal state is no longer deterministic.", function);
+            break;
+
+        /* --- ERRORS (User code logic failure) --- */
+
+        case CHAN_ERROR_RX_INVALID:
+            RT_ERR("Operation failed: The RX end of the channel \033[4mis invalid or its already closed.\033[0m", function);
+            EXPL("Check the lifecycle of the channel; the consumer may have already called \033[1m\033[97mmpsc_drop_rx()\033[0m.");
+            break;
+
+        case CHAN_ERROR_RX_LOCKED:
+            // value: Requester ID
+            RT_ERR("Task<%ld> tried to take the rx end of a channel but it is owned by another task.", function, value.i64);
+            EXPL("MPSC channels only support \033[1mone\033[0m waiter on the RX end at a time.");
+            break;
+
+        case CHAN_ERROR_DEAD_CHANNEL:
+            RT_ERR("Tried to use a dead channel.", function);
+            EXPL("Caught this error due to tracking but it would have produce a \033[1m\033[91mSIGSEGV\033[0m otherwise.");
+            break;
+
+        case CHAN_ERROR_NULL_PTR:
+            RT_ERR("Illegal NULL pointer passed to channel operation.", function);
+            break;
+
+        /* --- WARNINGS (Subtle issues / Soft failures) --- */
+
+        case CHAN_WARN_DOUBLE_DROP:
+            RT_WRN("Object was dropped more than once.");
+            EXPL("Harmless if object is being tracked, but indicates \033[4mredundant logic\033[0m in a task.");
+            break;
+
+        case CHAN_WARN_RETURN_NULL:
+            RT_WRN("Returning a \033[1m\033[97mNULL\033[0m pointer due to bad parameters.");
+            EXPL("Be aware of a possible \033[1m\033[91mSIGSEGV\033[0m when using this pointer.");
+            break;
+
+        default:
+            RT_WRN("Unknown channel error code: %d", cerr);
+            break;
+    }
 }
