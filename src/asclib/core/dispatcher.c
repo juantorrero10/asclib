@@ -8,8 +8,8 @@
 #include <signal.h>
 #include <sys/epoll.h>
 
-#define __DEBUG
-#define __DEBUG_STATES
+//#define __DEBUG
+//#define __DEBUG_STATES
 //#define __DEBUG_OCCMAP
 //#define __DEBUG_CTX
 
@@ -142,6 +142,7 @@ void* dispatcher(void* arg) {
     hmawait = NULL;
     
     TCB* t = NULL;
+    TCB* t2 = NULL; (void)t2;
 
     __alloc_occupation_map();
     timers = heap_alloc(TIMERS_INITIAL_CAP);
@@ -191,12 +192,15 @@ void* dispatcher(void* arg) {
             }
         }
         #ifdef __DEBUG_STATES
-        if (last_dec.curr != w->tasks.current || last_dec.st != STATUS_OF(w->tasks.current) || last_dec.prev != buffer){
+        t2 = w->tasks.arr[w->tasks.current];
+        task_status ts = last_dec.st;
+        if (TCB_AT(w->tasks.current)) ts = STATUS_OF(w->tasks.current);
+        if (last_dec.curr != w->tasks.current || last_dec.st != ts || last_dec.prev != buffer){
             printf("%s", states);
             OKAY("found=%d, all_done=%d, previous=%zu, current=%zu, remaining=%zu", found, all_done, buffer, w->tasks.current, w->sync.initial_remaining);
         }
         last_dec.curr = w->tasks.current;
-        last_dec.st = STATUS_OF(w->tasks.current);
+        if (TCB_AT(w->tasks.current))last_dec.st = STATUS_OF(w->tasks.current);
         last_dec.prev = buffer;
         #endif
 

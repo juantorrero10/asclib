@@ -90,6 +90,10 @@ void asc_error(asclib_err_t err, const char* function, any_t value) {
         RT_WRN("Tried tracking the closure of object of type \033[1m\033[97m<%s>\033[0m but it was not marked when created.", (char*)value.ptr);
         EXPL("Revise the parameters of the object's creation");
         break;
+
+    case WARN_RETURNING_NULL:
+        RT_WRN("Operation '%s' is returning a NULL pointer when a valid value is potencially being expected.", (char*)value.ptr);
+        EXPL("Could produce a \033[1m\033[91mSIGSEGV\033[0m if not handled gracefully.");
     default:
         break;
     }

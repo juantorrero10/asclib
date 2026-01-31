@@ -96,7 +96,7 @@ static void* __internal_mpsc_recv(void* __arg) {
         t->status = READY;
         t->w_reason = WAIT_NONE;
     }
-    
+
 
     task_return(asclib_err_channels_t, CHAN_OK);
 }
@@ -110,7 +110,7 @@ static void* __internal_mpsc_send(void* __arg) {
 
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "CHANNELS::mspc_send()");
-    if (chan->rx_owner == MPSC_RX_STATE_CLOSED || chan->rx_owner == MPSC_RX_STATE_REF) {
+    if (chan->rx_owner == MPSC_RX_STATE_CLOSED) {
         asc_chan_error(CHAN_ERROR_RX_INVALID, "CHANNELS::mpsc_send()", (any_t)0, (any_t)0, (any_t)0);
         task_return(asclib_err_channels_t, CHAN_ERROR_RX_INVALID);
     }

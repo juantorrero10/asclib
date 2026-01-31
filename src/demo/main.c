@@ -20,7 +20,6 @@ async(slow_consumer, mpsc_rx_ref_t rx_ref) {
 }
 
 async(fast_producer, mpsc_tx_t tx; int id) {
-    detach;
     int j = 0;
     for(int i = 0; i < 5; i++) {
         printf("[P%d] Sending %d...\n", arg(id), (arg(id) * 10) + i);

@@ -37,6 +37,7 @@ void task_trampoline(void) {
 
     void* res = t->fptr((void*)t->arg);
 
+
     // Start the task!!
     if (!t->dyn_created) {
         // One of the initial tasks
@@ -60,11 +61,12 @@ void task_trampoline(void) {
     
 
     // See if we are being waited for by another task, by the awaiting group.
-    if (t->await_group != (size_t)-1) {
+    if (t->await_group != (size_t)-1 && !t->detached) {
         uint64_t old = 0;
         switch (_get_tcbstate_at(t->await_group)) {
             case VIRTUAL_RACE:
             case TCB_STATE:
+            
                 for (ssize_t i = hmawait->highest_index; i >= 0; i--)
                 {
                     if (!hmawait->occ[i]) continue;
@@ -182,6 +184,7 @@ void* __task_await_impl(task_handle_t th, int expect) {
 
     // Set the waiting group to itself.
     w->tasks.arr[th]->await_group = th;
+    
 
     _asm_ctx_switch_64(&w->sched_ctx, &w->tasks.arr[current_id]->ctx);
 
@@ -196,6 +199,7 @@ void* __task_await_impl(task_handle_t th, int expect) {
     t = w->tasks.arr[current_id];
 
     t->w_reason = WAIT_NONE;
+    w->tasks.arr[w->tasks.current]->status = READY;
 
     result = w->tasks.arr[th]->returned;
 
@@ -362,6 +366,7 @@ all_result __task_await_all_impl(task_handle_t* handles, size_t num_task) {
         w->tasks.arr[handles[i]]->await_group = virtual;
         wait_amount++;
     }
+
     
     // The otherwise unused pointers in the TCB arr or gonna serve as remaining counters!!!
     w->tasks.arr[virtual] = (TCB*)(uintptr_t)wait_amount;
@@ -436,7 +441,7 @@ void task_detach() {
     size_t curr;
 
     // Alert any task that he have detached
-    if (!hmawait) return;    
+    if (!hmawait || w->tasks.arr[w->tasks.current]->await_group == (size_t)-1) return;    
     for (ssize_t i = hmawait->highest_index; i >= 0; i--)
     {
         if (!hmawait->occ[i]) continue;
@@ -444,10 +449,11 @@ void task_detach() {
         if (hmawait->map[i].v == w->tasks.arr[w->tasks.current]->await_group
             && STATUS_OF(curr) == WAITING && _get_tcbstate_at(curr)) {
             // if its dependency is "virtual joined" we only decrement the number
-            if (IS_JOINED(curr)) {
-                uintptr_t old = (uintptr_t)w->tasks.arr[curr];
+            if (IS_JOINED(hmawait->map[i].v)) {
+                uintptr_t old = (uintptr_t)w->tasks.arr[hmawait->map[i].v];
                 old--;
-                w->tasks.arr[curr] = (TCB*)old;
+                w->tasks.arr[hmawait->map[i].v] = (TCB*)old;
+                if (old == 0) STATUS_OF(curr) = READY;
                 continue;
             }
             // Otherwise simply ready the waiter
@@ -557,10 +563,13 @@ static void* __any_result_select_method() {
 static void* __all_result_get_method(int n) {
     if (!last_all_result) return NULL;
     void* ret = NULL;
+    
 
     if (last_all_result->returns[n]) {
         ret = *(void**)last_all_result->returns[n];
         free(last_all_result->returns[n]);
+    } else {
+        if (!ret) asc_error(WARN_RETURNING_NULL, ".get()", (any_t)(void*)(".get() method on await_all()"));
     }
     free(last_all_result->returns);
     free(last_all_result);

@@ -84,7 +84,7 @@ int hm_remove_entry(uu_hash_map* hm, size_t fd) {
     hm->size--;
     hm->occ[found] = 0;
 
-    if ((size_t)found >= hm->highest_index) hm->highest_index = found - 1;
+    if ((size_t)found >= hm->highest_index && hm->highest_index > 0) hm->highest_index = found - 1;
 
     return 1;
 }
