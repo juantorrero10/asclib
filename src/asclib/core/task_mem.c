@@ -3,7 +3,7 @@
 #include <sys/mman.h>
 #include <stdio.h>
 
-
+#include <task_mem.h>
 #include <task_control.h>
 #include <task_stack.h>
 #include <defs.h>
@@ -15,8 +15,8 @@
 // Memory managment unit for TCB types
 
 
-// Occupation map to prevent segmentation
-TLS uint8_t* occupation_map = NULL;
+// Keep memory packed and keep track of Virtual Tasks
+TLS uint8_t* tcb_state_map = NULL;
 
 
 
@@ -24,7 +24,8 @@ TLS uint8_t* occupation_map = NULL;
 /** 
  * @brief Task creator. 
  * @param te IF te.fptr == NULL it will create a 'virtual task'
- * @note a virtual task doesnt allocate a TCB it just occupies a spot.
+ * A Virtual Task occupies a space in the TCB array but no TCB is allocated.
+ * Used for making complex depency graphs during operations like await_any() or await_all()
  * @attention virtual tasks will grow the array if there aren't any space left.
 */
 task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t __create_guard_page) {
@@ -44,11 +45,11 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
 
     int virtual_task = 0;
 
-    if (!occupation_map) {
-        occupation_map = calloc(1, w->tasks.capacity);
+    if (!tcb_state_map) {
+        tcb_state_map = calloc(1, w->tasks.capacity);
         for (size_t i = 0; i < w->tasks.initial; i++)
         {
-            occupation_map[i] = 1;
+            tcb_state_map[i] = 1;
         }
         
     }
@@ -77,19 +78,19 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
     // if we dont find a free spot realloc the array;
     int new_id = -1;
     for (int i = 0; i < (int)w->tasks.capacity; i++)
-        if (occupation_map[i] == 0) { new_id = i; break; }
+        if (tcb_state_map[i] == 0) { new_id = i; break; }
 
     if ((w->tasks.running >= w->tasks.capacity) && new_id == -1) {
 
         size_t old_c = w->tasks.capacity;
 
         w->tasks.arr =      realloc(w->tasks.arr, sizeof(TCB*) * w->tasks.capacity * 2);
-        occupation_map =    realloc(occupation_map, w->tasks.capacity * 2);
+        tcb_state_map =    realloc(tcb_state_map, w->tasks.capacity * 2);
 
         w->tasks.capacity *= 2;
 
         // Memset to 0, destructors rely on NULL values!!
-        memset(occupation_map + old_c, 0, w->tasks.capacity - old_c);
+        memset(tcb_state_map + old_c, 0, w->tasks.capacity - old_c);
         memset(w->tasks.arr + old_c, 0, sizeof(TCB*) * (w->tasks.capacity - old_c));
         new_id = w->tasks.running;
         
@@ -104,7 +105,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
         w->tasks.arr[new_id] = NULL;
     }
     
-    occupation_map[new_id] = 1;
+    tcb_state_map[new_id] = 1;
 
     w->tasks.running++;
 
@@ -122,7 +123,7 @@ void __task_destroy(task_handle_t t) {
 
     TCB* ta = w->tasks.arr[t];
 
-    if (ta != NULL) {
+    if (TCB_AT(t)) {
         if (ta->w_reason == WAIT_FD) {
             if (ta->wait_for.fd >= 0) {
                 epoll_ctl(w->sync.epoll_fd, EPOLL_CTL_DEL, ta->wait_for.fd, NULL);
@@ -134,38 +135,35 @@ void __task_destroy(task_handle_t t) {
         if (ta->arg_is_malloced) free(ta->arg);
         dealloc_stack(w->tasks.arr[t]);
         w->tasks.arr[t]->stack = NULL;
+        free(w->tasks.arr[t]);
     }
 
-    occupation_map[t] = 0; // Free the slot for reuse
-
-    // If it's virtual it will see a NULL and do nothing
-    free(w->tasks.arr[t]);
-
+    tcb_state_map[t] = 0; // Free the slot for reuse
     w->tasks.arr[t] = NULL;
 
     w->tasks.running--;
 }
 
-uint8_t _get_occupation_at(size_t id) { return occupation_map[id]; }
+uint8_t _get_tcbstate_at(size_t id) { return tcb_state_map[id]; }
 
-void _set_occupation_at(size_t id, uint8_t val) { occupation_map[id] = val; }
+void _set_tcbstate_at(size_t id, uint8_t val) { tcb_state_map[id] = val; }
 
 void __alloc_occupation_map() {
 
     worker_t* w = tl_worker;
     assert(tl_worker);
 
-    if (!occupation_map) {
-        occupation_map = calloc(1, w->tasks.capacity);
+    if (!tcb_state_map) {
+        tcb_state_map = calloc(1, w->tasks.capacity);
         for (size_t i = 0; i < w->tasks.initial; i++)
         {
-            occupation_map[i] = 1;
+            tcb_state_map[i] = 1;
         }
         
     }
  }
 
 void __free_occupation_map() { 
-    free(occupation_map);
-    occupation_map = NULL;
+    free(tcb_state_map);
+    tcb_state_map = NULL;
 }

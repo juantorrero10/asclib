@@ -198,6 +198,7 @@ mpsc_rx_t mpsc_take_rx(mpsc_rx_ref_t rx_reference) {
         return NULL;
     }
 
+
     chan->rx_owner = w->tasks.current;
 
     return (mpsc_rx_t)rx_reference;

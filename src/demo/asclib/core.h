@@ -27,8 +27,21 @@ typedef struct _Await_Any_Result {
     task_handle_t winner;
     task_handle_t* losers;
     size_t num_losers;
+
+    /** @attention Unsafe method!!!!.
+     * This methods is only guaranteed to work if called inmidiately after await_any()
+     * It drops the loser task and get the winners result 
+     * Dropping implies that alloced heap memory gets leaked if its not freed before dropping.
+     */ 
     void* (*select)(void);
 } any_result;
+
+typedef struct _Await_All_Result {
+    void** returns;
+    size_t amount;
+    void (*none)(void);
+    void* (*get)(size_t);
+} all_result;
 
 #define TASK_DEFAULT_PAGES 2
 
@@ -86,6 +99,7 @@ void task_detach();
 void* __task_alloc_ret_val(size_t s, void* src);
 void* __task_await_impl(task_handle_t th, int expect);
 any_result __task_await_any_impl(task_handle_t* handles, size_t count);
+all_result __task_await_all_impl(task_handle_t* handles, size_t num_task);
 task_handle_t __task_create(task__arg__constructor te);
 void __task_drop_impl(task_handle_t th);
 
@@ -161,6 +175,12 @@ void __task_drop_impl(task_handle_t th);
     task_handle_t _group[] = { __VA_ARGS__ }; \
     __task_await_any_impl(_group, __ASCLIB_COUNT_ARGS(__VA_ARGS__)); \
 })
+
+#define await_all(...) ({ \
+    task_handle_t _group[] = { __VA_ARGS__ }; \
+    __task_await_all_impl(_group, __ASCLIB_COUNT_ARGS(__VA_ARGS__)); \
+})
+
 
 #define any_ret(type, result) ({\
     void* __ptr = result.winner_return;\

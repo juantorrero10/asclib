@@ -32,6 +32,13 @@ typedef struct {
     size_t capacity; 
 } u64_arrlist_t;
 
+typedef struct {
+    void* data;
+    size_t chunk_size;
+    size_t size;
+    size_t capacity; 
+} g_arrlist_t;
+
 typedef struct _ASCLIB_mpsc_Channel {
     uint32_t magic;
 
@@ -66,6 +73,11 @@ void u64al_dealloc(u64_arrlist_t** arr);
 void u64al_append(u64_arrlist_t* arr, uint64_t entry);
 uint64_t u64_trim(u64_arrlist_t* arr, int _set_zero);
 uint64_t u64al_pop_front(u64_arrlist_t* arr);
+
+g_arrlist_t* gal_alloc(size_t initial_capacity, size_t chunk_size);
+void gal_dealloc(g_arrlist_t** arr);
+void gal_append(g_arrlist_t* arr, void* entry);
+void gal_trim(g_arrlist_t* arr, int _set_zero);
 
 
 #endif // HASHMAP_H_

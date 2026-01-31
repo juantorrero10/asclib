@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <collections.h>
 #include <defs/worker.h>
+#include <task_mem.h>
+#include <task_control.h>
 
 #define __DEBUG
 #include <log.h>
@@ -114,7 +116,7 @@ void heap_dealloc(heap_t** h) {
 
 static uint64_t get_ts(worker_t* w, size_t task) {
     // Safety check: Virtual tasks (NULL) or empty slots
-    if (task >= w->tasks.capacity || !w->tasks.arr[task]) {
+    if (task >= w->tasks.capacity || !TCB_AT(task)) {
         // Return "Infinity" so these invalid nodes sink to the bottom of the Min-Heap
         return (uint64_t)-1; 
     }
@@ -203,4 +205,35 @@ uint64_t u64al_pop_front(u64_arrlist_t* arr) {
     }
     arr->size--;
     return ret;
+}
+// ================================== u32 al =================================
+
+g_arrlist_t* gal_alloc(size_t initial_capacity, size_t chunk_size) {
+    g_arrlist_t* ret = malloc(sizeof(g_arrlist_t));
+    ret->data = malloc(chunk_size * initial_capacity);
+    ret->capacity = initial_capacity;
+    ret->chunk_size = chunk_size;
+    ret->size = 0;
+
+    return ret;
+}
+
+void gal_dealloc(g_arrlist_t** arr) {
+    free((*arr)->data);
+    free((*arr));
+    *arr = NULL;
+}
+
+void gal_append(g_arrlist_t* arr, void* entry) {
+    if (arr->size >= arr->capacity) {
+        arr->data = realloc(arr->data, arr->chunk_size * 2 * arr->capacity);
+        arr->capacity *= 2;
+    }
+    memcpy((uint8_t*)arr->data + (arr->chunk_size * arr->size++), entry, arr->chunk_size);
+}
+
+void gal_trim(g_arrlist_t* arr, int _set_zero) {
+    if (arr->size == 0) return;
+    if (_set_zero) memset((uint8_t*)arr->data + (arr->chunk_size * arr->size - 1), 0, arr->chunk_size);
+    arr->size--;
 }

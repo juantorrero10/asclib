@@ -8,8 +8,8 @@
 #include <signal.h>
 #include <sys/epoll.h>
 
-//#define __DEBUG
-//#define __DEBUG_STATES
+#define __DEBUG
+#define __DEBUG_STATES
 //#define __DEBUG_OCCMAP
 //#define __DEBUG_CTX
 
@@ -57,13 +57,13 @@ static void log_decision_state(worker_t* w, char* buff) {
     for (size_t i = 0; i < w->tasks.capacity; i++)
     {
 
-        if (!_get_occupation_at(i)) continue;
+        if (!_get_tcbstate_at(i)) continue;
         if (i == w->tasks.current) { 
             sz += sprintf(buff + sz, "\033[90m[*]\033[1m\033[97m "); 
         }
         else sz += sprintf(buff + sz, "\033[90m[*] ");
 
-        if (!w->tasks.arr[i]) {
+        if (IS_VIRTUAL(i)) {
             sz += sprintf(buff + sz, "%zu: VIRTUAL\n", i);
         } else {
             if (w->tasks.arr[i]->status == WAITING && w->tasks.arr[i]->w_reason == WAIT_TIMER) {
@@ -96,7 +96,7 @@ static void lazy_wait(worker_t* w) {
     while (timers->size > 0) {
         // Looking-ahead, we don't want to modify a valid entry
         top = timers->data[0];
-        if (!w->tasks.arr[top] || STATUS_OF(top) == FINISHED || W_REASON(top) != WAIT_TIMER) {
+        if (!TCB_AT(top) || STATUS_OF(top) == FINISHED || W_REASON(top) != WAIT_TIMER) {
             heap_peek(w, timers);
             continue;
         }
@@ -138,7 +138,7 @@ void* dispatcher(void* arg) {
     assert(w->returned_array);
     
 
-    set_sigsegv_handler();
+    //set_sigsegv_handler();
     hmawait = NULL;
     
     TCB* t = NULL;
@@ -175,7 +175,7 @@ void* dispatcher(void* arg) {
         {
             int idx = (w->tasks.current + 1 + i) % w->tasks.capacity;    
 
-            if (!_get_occupation_at(idx) || !w->tasks.arr[idx]) continue;
+            if (!TCB_AT(idx)) continue;
 
             // Candidate may be sleeping
             if (SLEEPING(w->tasks.arr[idx])) {
@@ -204,7 +204,7 @@ void* dispatcher(void* arg) {
         printf("[*] Occupation map: ");
         for (size_t i = 0; i < w->tasks.capacity; i++)
         {
-            printf("%d, ", _get_occupation_at(i));
+            printf("%d, ", _get_tcbstate_at(i));
         }
         printf("\n");
         
@@ -260,7 +260,7 @@ void* dispatcher(void* arg) {
 
     int leaked_tasks = 0;
     for (size_t i = w->tasks.initial; i < w->tasks.capacity; i++) {
-        if (_get_occupation_at(i) && !w->tasks.arr[i]->detached) { // Slot is still active
+        if (_get_tcbstate_at(i) && !w->tasks.arr[i]->detached) { // Slot is still active
             leaked_tasks++;
         }
     }

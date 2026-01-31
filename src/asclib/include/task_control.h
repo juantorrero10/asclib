@@ -25,9 +25,32 @@ typedef struct _Await_Any_Result {
     void* (*select)(void);
 } any_result;
 
+typedef struct _Await_All_Result {
+    void** returns;
+    size_t amount;
+    void (*none)(void);
+    void* (*get)(size_t);
+} all_result;
+
 #define STATUS_OF(id) tl_worker->tasks.arr[id]->status
 #define IS_WAITING_FOR(w, id, id2) w->tasks.arr[id]->w_reason == WAIT_TASK && w->tasks.arr[id]->wait_for.task == id2
 #define W_REASON(id) tl_worker->tasks.arr[id]->w_reason
+
+#define EMPTY_STATE 0
+#define TCB_STATE 1
+#define VIRTUAL_RACE 2
+#define VIRTUAL_JOINED 3
+
+#define NOTHING_AT(id) (_get_tcbstate_at(id) == (uint8_t)0)
+
+#define TCB_AT(id) (_get_tcbstate_at(id) == (uint8_t)1)
+
+#define IS_VIRTUAL(id) (_get_tcbstate_at(id) > (uint8_t)1)
+
+#define SET_VIRTUAL_RACE(id)    (_set_tcbstate_at(id, (uint8_t)2))
+#define SET_VIRTUAL_JOINED(id)  (_set_tcbstate_at(id, (uint8_t)3))
+#define IS_RACE(id)             (_get_tcbstate_at(id) == (uint8_t)2)
+#define IS_JOINED(id)           (_get_tcbstate_at(id) == (uint8_t)3)
 
 #define ASSERT_CONTEXT(worker, fn) do {\
     if (!worker) asc_error(PANIC_CONTEXT_VIOLATION, fn, (any_t)0); \
@@ -35,7 +58,7 @@ typedef struct _Await_Any_Result {
 
 #define ASSERT_VALID_HANDLE(worker, id) do {\
     if (id == worker->tasks.current) asc_error(PANIC_AWAIT_SELF, "await()", (any_t)id);\
-    else if ( (size_t)id >= worker->tasks.capacity || !_get_occupation_at(id)) {\
+    else if ( (size_t)id >= worker->tasks.capacity || NOTHING_AT(id)) {\
         asc_error(PANIC_AWAIT_INVALID_ID, "await()", (any_t)id); \
     }\
 } while (0)
