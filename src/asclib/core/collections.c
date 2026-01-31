@@ -32,6 +32,7 @@ void hm_dealloc(uu_hash_map** hashmap) {
 }
 
 int hm_add_entry(uu_hash_map* hm, size_t k, size_t v) {
+    
 
     int first_hole = -1;
 
@@ -80,7 +81,6 @@ int hm_remove_entry(uu_hash_map* hm, size_t fd) {
         if (hm->map[i].k == fd) { found = i; break;}
     }
     if (found == -1) return 0;
-
     hm->size--;
     hm->occ[found] = 0;
 

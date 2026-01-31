@@ -151,8 +151,6 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
     task_handle_t final_handle = ((uint64_t)final_gen << 32) | (uint32_t)new_id;
 
     return final_handle;
-
-    return final_handle;
 }
 
 // Exposed function for task creation, its a wrapper for the more priviledge function.

@@ -3,23 +3,29 @@
 
 #include "asclib/core.h"
 #include "asclib/sync.h"
-#include "asclib/io.h"
+
 
 async(dummy) {
     await(asc_sleep(500));
     task_return_void();
 }
 
+async(dummy2) {
+    await(asc_sleep(500));
+    task_return(int, 42);
+}
+
 async(main_task) {
 
-    task_handle_t t1 = task_spawn(dummy);
+    task_handle_t t1 = task_spawn(dummy2);
+
+    await(t1);
 
     await(asc_sleep(1000));
 
-    uint64_t n = await_ret(uint64_t, t1);
-
-    printf("n = %lu\n", n);
-
+    int n = await_ret(int, t1);
+    printf("n = %d\n", n);
+    
     task_return_void();
 }
 

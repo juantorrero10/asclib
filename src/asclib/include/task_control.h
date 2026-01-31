@@ -61,13 +61,14 @@ typedef struct _Await_All_Result {
     if (!worker) asc_error(PANIC_CONTEXT_VIOLATION, fn, (any_t)0); \
 } while (0)
 
-#define LOWER_32(n) n & 0xFFFFFFFF
+#define LOWER_32(n) (n & 0xFFFFFFFF)
 
 #define ASSERT_VALID_HANDLE(worker, id, gen_map, gen) do {\
-    if (id == worker->tasks.current) asc_error(PANIC_AWAIT_SELF, "await()", (any_t)id);\
-    else if ( (size_t)id >= worker->tasks.capacity || NOTHING_AT(id)\
-                || (gal_cmp_at(gen_map, (int)id, &gen) != 0)) {\
-        asc_error(PANIC_AWAIT_INVALID_ID, "await()", (any_t)id); \
+    if (id == worker->tasks.current) asc_error(PANIC_AWAIT_SELF, "await()", (any_t)((uint64_t)gen << 32 | id));\
+    else if ( (gal_cmp_at(gen_map, (int)id, &gen) != 0)) {\
+        asc_error(WARN_STALE_HANDLE, "await", (any_t) ((uint64_t)gen << 32 | id));\
+    } else if ((size_t)id >= worker->tasks.capacity || NOTHING_AT(id)) {\
+        asc_error(PANIC_AWAIT_INVALID_ID, "await", (any_t)((uint64_t)gen << 32 | id)); \
     }\
 } while (0)
 

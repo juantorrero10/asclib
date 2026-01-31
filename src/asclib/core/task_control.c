@@ -74,7 +74,8 @@ void task_trampoline(void) {
                 for (ssize_t i = hmawait->highest_index; i >= 0; i--)
                 {
                     if (!hmawait->occ[i]) continue;
-                    if (hmawait->map[i].v == t->await_group && STATUS_OF(hmawait->map[i].k) != FINISHED) {
+                    if (LOWER_32(hmawait->map[i].v) == t->await_group && STATUS_OF(hmawait->map[i].k) != FINISHED) {
+                        assert(hm_remove_entry(hmawait, hmawait->map[i].k));
                         STATUS_OF(hmawait->map[i].k) = READY;
                     }
                 } break;
@@ -90,7 +91,8 @@ void task_trampoline(void) {
                     for (ssize_t i = hmawait->highest_index; i >= 0; i--)
                     {
                         if (!hmawait->occ[i]) continue;
-                        if (hmawait->map[i].v == t->await_group && STATUS_OF(hmawait->map[i].k) != FINISHED) {
+                        if (LOWER_32(hmawait->map[i].v) == t->await_group && STATUS_OF(hmawait->map[i].k) != FINISHED) {
+                            assert(hm_remove_entry(hmawait, hmawait->map[i].k));
                             STATUS_OF(hmawait->map[i].k) = READY;
                     }
                     } 
@@ -145,9 +147,11 @@ void __task_yield_impl() {
 
 void* __task_await_impl(task_handle_t th, int expect) {
     worker_t* w = tl_worker;
-    void* result;
+    void* result = NULL;
 
     if (th == (task_handle_t)-1) return NULL;
+
+    task_handle_t og = th;
 
     if (!hmawait) {
         hmawait = hm_alloc(HM_INITIAL_CAPACITY);
@@ -168,16 +172,18 @@ void* __task_await_impl(task_handle_t th, int expect) {
         ASSERT_VALID_HANDLE(w, th, generation_map, gen);
     }
 
-    assert(w->tasks.arr[th]);
-
 
     // If by the time we've called its already finished just cleanup and yield
-    if (!TCB_AT(th)||STATUS_OF(th) == FINISHED) {
-        result = w->tasks.arr[th]->returned;
+    if (!TCB_AT(th) || STATUS_OF(th) == FINISHED) {
+        if (TCB_AT(th)) result = w->tasks.arr[th]->returned;
+        if (expect && !result) {
+            asc_error(PANIC_EXPECT_NULL, "__task_await_impl()", (any_t)th);
+        }
         __task_destroy(th);
         __task_yield_impl();
         return result;
     }
+
 
 
     size_t current_id = w->tasks.current;
@@ -187,7 +193,7 @@ void* __task_await_impl(task_handle_t th, int expect) {
     t->w_reason = WAIT_TASK;
     t->wait_for.task = th;
 
-    assert(hm_add_entry(hmawait, w->tasks.current, th));
+    assert(hm_add_entry(hmawait, w->tasks.current, og));
 
     // Set the waiting group to itself.
     w->tasks.arr[th]->await_group = th & 0xFFFFFFFF;
@@ -210,14 +216,8 @@ void* __task_await_impl(task_handle_t th, int expect) {
 
     result = w->tasks.arr[th]->returned;
 
-    if (expect && !result) {
-        asc_error(PANIC_EXPECT_NULL, "__task_await_impl()", (any_t)th);
-    }
-
     // Clean 
     __task_destroy(th);
-
-    assert(hm_remove_entry(hmawait, w->tasks.current));
 
     return result;
 }
@@ -333,8 +333,6 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
     memcpy(last_any_result, &ret, sizeof(any_result));
     free(gens);
 
-    assert(hm_remove_entry(hmawait, w->tasks.current));
-
 
     return ret;
     
@@ -412,9 +410,6 @@ all_result __task_await_all_impl(task_handle_t* handles, size_t num_task) {
     w->tasks.arr[w->tasks.current]->w_reason = WAIT_NONE;
     w->tasks.arr[w->tasks.current]->wait_for.task = 0;
     
-    // Remove our waiting from the hashmap
-    assert(hm_remove_entry(hmawait, w->tasks.current));
-    
     __task_destroy(virtual);
 
     // Allow the methods
@@ -468,17 +463,21 @@ void task_detach() {
     {
         if (!hmawait->occ[i]) continue;
         curr = hmawait->map[i].k;
-        if (hmawait->map[i].v == w->tasks.arr[w->tasks.current]->await_group
+        if (LOWER_32(hmawait->map[i].v) == w->tasks.arr[w->tasks.current]->await_group
             && STATUS_OF(curr) == WAITING && _get_tcbstate_at(curr)) {
             // if its dependency is "virtual joined" we only decrement the number
-            if (IS_JOINED(hmawait->map[i].v)) {
-                uintptr_t old = (uintptr_t)w->tasks.arr[hmawait->map[i].v];
+            if (IS_JOINED(LOWER_32(hmawait->map[i].v))) {
+                uintptr_t old = (uintptr_t)w->tasks.arr[LOWER_32(hmawait->map[i].v)];
                 old--;
-                w->tasks.arr[hmawait->map[i].v] = (TCB*)old;
-                if (old == 0) STATUS_OF(curr) = READY;
+                w->tasks.arr[LOWER_32(hmawait->map[i].v)] = (TCB*)old;
+                if (old == 0) { 
+                    STATUS_OF(curr) = READY; 
+                    assert(hm_remove_entry(hmawait, hmawait->map[i].k));
+                }
                 continue;
             }
             // Otherwise simply ready the waiter
+            assert(hm_remove_entry(hmawait, hmawait->map[i].k));
             STATUS_OF(curr) = READY;
         }
     }

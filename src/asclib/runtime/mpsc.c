@@ -1,12 +1,13 @@
 #include <assert.h>
 #include <string.h>
 
-#include <collections.h>
 #include <task_mem.h>
 #include <task_control.h>
 #include <ascerr.h>
 #include <user_lib.h>
 #include <dispatcher.h>
+#include <collections.h>
+#include <channels.h>
 
 #define __DEBUG
 

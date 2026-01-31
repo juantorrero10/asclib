@@ -39,23 +39,6 @@ typedef struct {
     size_t capacity; 
 } g_arrlist_t;
 
-typedef struct _ASCLIB_mpsc_Channel {
-    uint32_t magic;
-
-    void* buffer;
-    size_t packet_size;
-    size_t capacity;
-    size_t count;
-    size_t head, tail;
-
-    // Single consumer -> 1 receiving waiter
-    task_handle_t rx_waiter; // The waiter is the spawned task that blocks itself until data is send. 
-    task_handle_t rx_owner;  // The owner is the task which is allowed to call recv and move the rx
-    // Multiple produces
-    u64_arrlist_t* tx_waiters;
-    size_t tx_rc;            // Reference count. Calling drop subtracts 1 and frees when reaching 0. 
-}mpsc_t;
-
 uu_hash_map* hm_alloc(size_t capacity);
 void hm_dealloc(uu_hash_map** hashmap);
 int hm_add_entry(uu_hash_map* hm, size_t k, size_t v);
