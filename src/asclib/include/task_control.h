@@ -52,13 +52,21 @@ typedef struct _Await_All_Result {
 #define IS_RACE(id)             (_get_tcbstate_at(id) == (uint8_t)2)
 #define IS_JOINED(id)           (_get_tcbstate_at(id) == (uint8_t)3)
 
+#define SEPARATE_ID_GEN(handle, dst_id, dst_gen) do {\
+    *dst_gen = (handle & (0xFFFFFFFFUL << 32)) >> 32;\
+    *dst_id = (handle & 0xFFFFFFFF);\
+} while(0)
+
 #define ASSERT_CONTEXT(worker, fn) do {\
     if (!worker) asc_error(PANIC_CONTEXT_VIOLATION, fn, (any_t)0); \
 } while (0)
 
-#define ASSERT_VALID_HANDLE(worker, id) do {\
+#define LOWER_32(n) n & 0xFFFFFFFF
+
+#define ASSERT_VALID_HANDLE(worker, id, gen_map, gen) do {\
     if (id == worker->tasks.current) asc_error(PANIC_AWAIT_SELF, "await()", (any_t)id);\
-    else if ( (size_t)id >= worker->tasks.capacity || NOTHING_AT(id)) {\
+    else if ( (size_t)id >= worker->tasks.capacity || NOTHING_AT(id)\
+                || (gal_cmp_at(gen_map, (int)id, &gen) != 0)) {\
         asc_error(PANIC_AWAIT_INVALID_ID, "await()", (any_t)id); \
     }\
 } while (0)

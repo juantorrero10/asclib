@@ -62,7 +62,7 @@ void asc_error(asclib_err_t err, const char* function, any_t value) {
         break;
 
     case PANIC_AWAIT_INVALID_ID:
-        RT_ERR("Task handle provided {%ld} to await did not reference any task. \033[4mValue was \033[1m\033[97minvalid\033[0m\033[4m or \033[1m\033[97mout of bounds\033[0m.", function, value.i64);
+        RT_ERR("Task handle provided {0x%lx} is an invalid handle. \033[4mValue was \033[1m\033[97mstale, invalid\033[0m\033[4m or \033[1m\033[97mout of bounds\033[0m.", function, value.u64);
         panic_linux("Task would have \033[1m\033[97mblocked indefinitely.\033[0m", function);
         break;
 
@@ -94,6 +94,12 @@ void asc_error(asclib_err_t err, const char* function, any_t value) {
     case WARN_RETURNING_NULL:
         RT_WRN("Operation '%s' is returning a NULL pointer when a valid value is potencially being expected.", (char*)value.ptr);
         EXPL("Could produce a \033[1m\033[91mSIGSEGV\033[0m if not handled gracefully.");
+        break;
+
+    case WARN_STALE_HANDLE:
+        RT_WRN("Task handled provided {0x%lx} \033[4mhas expired\033[0m. The task referenced by this handle has already been cleaned up or replaced. ", value.u64);
+        EXPL("Awaiting call was \033[1m\033[97mignored\033[0m.");
+        break;
     default:
         break;
     }

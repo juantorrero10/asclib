@@ -3,12 +3,15 @@
 #include <sys/mman.h>
 #include <stdio.h>
 
+#define __DEBUG
+
 #include <task_mem.h>
 #include <task_control.h>
 #include <task_stack.h>
 #include <defs.h>
 #include <dispatcher.h>
 #include <log.h>
+#include <collections.h>
 
 
 
@@ -17,6 +20,9 @@
 
 // Keep memory packed and keep track of Virtual Tasks
 TLS uint8_t* tcb_state_map = NULL;
+
+// Generation map to detect stale handlers
+TLS g_arrlist_t* generation_map = NULL;
 
 
 
@@ -38,6 +44,17 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
     
     worker_t* w = tl_worker;
     assert(w);
+
+    // Start generation map if not present
+    if (!generation_map) {
+        generation_map = gal_alloc(w->tasks.initial, sizeof(uint32_t));
+        uint32_t one = 1;
+        for (size_t i = 0; i < w->tasks.initial; i++)
+        {
+            gal_append(generation_map, &one);
+        }
+        
+    }
 
     int virtual_task = 0;
 
@@ -72,11 +89,11 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
 
 
     // if we dont find a free spot realloc the array;
-    int new_id = -1;
+    size_t new_id = (size_t)-1;
     for (int i = 0; i < (int)w->tasks.capacity; i++)
-        if (tcb_state_map[i] == 0) { new_id = i; break; }
+        if (tcb_state_map[i] == 0) { new_id = (size_t)i; break; }
 
-    if ((w->tasks.running >= w->tasks.capacity) && new_id == -1) {
+    if ((w->tasks.running >= w->tasks.capacity) && new_id == (size_t)-1) {
 
         size_t old_c = w->tasks.capacity;
 
@@ -93,6 +110,25 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
 
     }
 
+    uint32_t final_gen = 1;
+    if (new_id == 5) {
+        (void)final_gen;
+    }
+
+    if (new_id >= generation_map->size) {
+        uint32_t start_gen = 1;
+        gal_append(generation_map, &start_gen);
+        final_gen = start_gen;
+    } else {
+        gal_get_at(generation_map, (int)new_id, &final_gen);
+        // Only increment for real tasks being REUSED
+        if (!virtual_task) {
+            final_gen++;
+            gal_set_at(generation_map, (int)new_id, &final_gen);
+        }
+
+    }
+
     if (!virtual_task) {
         w->tasks.arr[new_id] = malloc(sizeof(TCB));
         memcpy(w->tasks.arr[new_id], &t, sizeof(TCB));
@@ -103,9 +139,20 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
     
     tcb_state_map[new_id] = 1;
 
+
+
     w->tasks.running++;
 
-    return new_id;
+    // Task handle (only for the user)
+    // lower 32 TCB offset
+    // upper 32 generation number
+
+    // Cast gen to 64-bit BEFORE shifting, or it will overflow before the OR
+    task_handle_t final_handle = ((uint64_t)final_gen << 32) | (uint32_t)new_id;
+
+    return final_handle;
+
+    return final_handle;
 }
 
 // Exposed function for task creation, its a wrapper for the more priviledge function.
@@ -140,7 +187,9 @@ void __task_destroy(task_handle_t t) {
     w->tasks.running--;
 }
 
-uint8_t _get_tcbstate_at(size_t id) { return tcb_state_map[id]; }
+uint8_t _get_tcbstate_at(size_t id) {
+    return tcb_state_map[id & 0xFFFFFFFF]; 
+}
 
 void _set_tcbstate_at(size_t id, uint8_t val) { tcb_state_map[id] = val; }
 
@@ -159,7 +208,8 @@ void __alloc_occupation_map() {
     }
  }
 
-void __free_occupation_map() { 
+void __free_taskmem_objs() { 
     free(tcb_state_map);
+    gal_dealloc(&generation_map);
     tcb_state_map = NULL;
 }

@@ -43,6 +43,11 @@ typedef struct _Await_All_Result {
     void* (*get)(size_t);
 } all_result;
 
+typedef struct _CleanUP_Routine {
+    void* __ctx;
+    void (*cleanup)(void*);
+} cleanup_routine_t;
+
 #define TASK_DEFAULT_PAGES 2
 
 /** 
@@ -117,6 +122,12 @@ void __task_drop_impl(task_handle_t th);
 // For source files (.c). Body function declaration
 #define async(name, ...)                                \
     typedef struct { size_t _d; __VA_ARGS__; } __ASCLIB__##name##__ARGDECL; \
+    void* name(void* __arg) {                           \
+        __ASCLIB__##name##__ARGDECL* __args = (__ASCLIB__##name##__ARGDECL*)__arg;        \
+        (void)__args;
+
+// Async declaration compatible for "redefinitions"
+#define async_(name, ...)                                \
     void* name(void* __arg) {                           \
         __ASCLIB__##name##__ARGDECL* __args = (__ASCLIB__##name##__ARGDECL*)__arg;        \
         (void)__args;
@@ -224,7 +235,6 @@ void __task_drop_impl(task_handle_t th);
 
 #define drop_task(handle) __task_drop_impl(handle)
 #define drop __task_drop_impl((size_t)-1)
-
 
 
 // WORKER FUNCTION

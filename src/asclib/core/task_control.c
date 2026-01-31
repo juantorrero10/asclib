@@ -22,6 +22,10 @@ TLS all_result* last_all_result = NULL;
 #define HM_INITIAL_CAPACITY 4
 TLS uu_hash_map* hmawait = NULL;
 
+// Managed by task_mem.c
+extern TLS g_arrlist_t* generation_map;
+
+
 static void* __any_result_select_method();
 static void* __all_result_get_method();
 static void __all_result_none_method();
@@ -151,14 +155,17 @@ void* __task_await_impl(task_handle_t th, int expect) {
 
     ASSERT_CONTEXT(w, "await()");
 
+    uint32_t gen = (th & ((uint64_t)0xFFFFFFFF << 32)) >> 32;
+
     // Functions can 
     if (th == HANDLE_IGNORE) { 
         __task_yield_impl();
         return calloc(1, 8);
     }
     else {
-        uint64_t id = (uint64_t)th;
-        ASSERT_VALID_HANDLE(w, id);
+        // Validate handle
+        th &= 0xFFFFFFFF;
+        ASSERT_VALID_HANDLE(w, th, generation_map, gen);
     }
 
     assert(w->tasks.arr[th]);
@@ -183,7 +190,7 @@ void* __task_await_impl(task_handle_t th, int expect) {
     assert(hm_add_entry(hmawait, w->tasks.current, th));
 
     // Set the waiting group to itself.
-    w->tasks.arr[th]->await_group = th;
+    w->tasks.arr[th]->await_group = th & 0xFFFFFFFF;
     
 
     _asm_ctx_switch_64(&w->sched_ctx, &w->tasks.arr[current_id]->ctx);
@@ -220,9 +227,13 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
     ASSERT_CONTEXT(w, "__task_await_any_impl");
     void* result;
 
+    if (num_task == 0) return (any_result){0};
+
     if (!hmawait) {
         hmawait = hm_alloc(HM_INITIAL_CAPACITY);
     }
+
+    uint32_t* gens = malloc(sizeof(uint32_t) * num_task);
 
     any_result ret = { 0 };
     ret.select = __any_result_select_method;
@@ -235,11 +246,11 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
     };
     
     //Create a virtual task
-    task_handle_t virtual = __task_create_ex(
+    task_handle_t virtual = LOWER_32( __task_create_ex(
         tvir,
         0,
         0
-    );
+    ));
 
     // Set the state to race.
     SET_VIRTUAL_RACE(virtual);
@@ -248,13 +259,15 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
 
     // Set the await groups
     for (size_t i = 0; i < num_task; i++) {
-        ASSERT_VALID_HANDLE(w, handles[i]);
+        SEPARATE_ID_GEN(handles[i], &handles[i], &gens[i]);
+        ASSERT_VALID_HANDLE(w, handles[i], generation_map, gens[i]);
         if (STATUS_OF(handles[i]) == FINISHED) { already_finished = handles[i]; break; }
         w->tasks.arr[handles[i]]->await_group = virtual;
     }
 
     if (already_finished != -1) {
         result = w->tasks.arr[already_finished]->returned;
+        free(gens);
         __task_destroy(already_finished);
         __task_yield_impl();
         ret.winner_return = result;
@@ -276,7 +289,7 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
     size_t n_losers = 0;
     for (size_t i = 0; i < num_task; i++)
     {
-        ASSERT_VALID_HANDLE(w, handles[i]);
+        ASSERT_VALID_HANDLE(w, handles[i], generation_map, gens[i]);
 
         // Asign to winner the first finished tasks it sees.
         if (STATUS_OF(handles[i]) == FINISHED) 
@@ -299,6 +312,7 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
     ret.winner = winner;
 
     if (!TCB_AT(winner) || w->tasks.arr[winner]->detached) {
+        free(gens);
         asc_error(WARN_AWAITING_DETACHED_TASK, "__task_await_impl()", (any_t)winner);
         w->tasks.arr[w->tasks.current]->status = READY;
         ret.winner_return = calloc(1, 8);
@@ -317,8 +331,10 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
 
     last_any_result = malloc(sizeof(any_result));
     memcpy(last_any_result, &ret, sizeof(any_result));
+    free(gens);
 
     assert(hm_remove_entry(hmawait, w->tasks.current));
+
 
     return ret;
     
@@ -328,17 +344,20 @@ all_result __task_await_all_impl(task_handle_t* handles, size_t num_task) {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "__task_await_any_impl");
 
+    if (num_task == 0) return (all_result){0};
+
+    uint32_t* gens = malloc(sizeof(uint32_t) * num_task);
 
     if (!hmawait) {
         hmawait = hm_alloc(HM_INITIAL_CAPACITY);
     }
 
     //Create virtual tasks
-    task_handle_t virtual = __task_create_ex(
+    task_handle_t virtual = LOWER_32(__task_create_ex(
         (task_entry_t){ .fptr = NULL, .arg_malloced = 0, .n_pages = 0 },
         0,
         0
-    );
+    ));
 
     // Set to joined
     SET_VIRTUAL_JOINED(virtual);
@@ -354,7 +373,8 @@ all_result __task_await_all_impl(task_handle_t* handles, size_t num_task) {
     int wait_amount = 0;
     for (size_t i = 0; i < num_task; i++)
     {
-        ASSERT_VALID_HANDLE(w, handles[i]);
+        SEPARATE_ID_GEN(handles[i], &handles[i], &gens[i]);
+        ASSERT_VALID_HANDLE(w, handles[i], generation_map, gens[i]);
         if (STATUS_OF(handles[i]) == FINISHED || handles[i] == HANDLE_IGNORE) {
             handles[i] = -1;
             continue;
@@ -400,6 +420,8 @@ all_result __task_await_all_impl(task_handle_t* handles, size_t num_task) {
     // Allow the methods
     res.none = __all_result_none_method;
     res.get = __all_result_get_method;
+
+    free(gens);
 
     if (last_all_result) { free(last_all_result->returns); free(last_all_result); }
     last_all_result = malloc(sizeof(all_result));

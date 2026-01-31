@@ -211,6 +211,7 @@ uint64_t u64al_pop_front(u64_arrlist_t* arr) {
 g_arrlist_t* gal_alloc(size_t initial_capacity, size_t chunk_size) {
     g_arrlist_t* ret = malloc(sizeof(g_arrlist_t));
     ret->data = malloc(chunk_size * initial_capacity);
+    memset(ret->data, 0, chunk_size * initial_capacity);
     ret->capacity = initial_capacity;
     ret->chunk_size = chunk_size;
     ret->size = 0;
@@ -219,9 +220,22 @@ g_arrlist_t* gal_alloc(size_t initial_capacity, size_t chunk_size) {
 }
 
 void gal_dealloc(g_arrlist_t** arr) {
+    if (!(*arr)) return;
     free((*arr)->data);
     free((*arr));
     *arr = NULL;
+}
+
+void gal_set_at(g_arrlist_t* arr, int n, void* data) {
+    // Cast to char* to ensure the addition is in bytes
+    uint8_t* target = (uint8_t*)arr->data + (n * arr->chunk_size);
+    memcpy(target, data, arr->chunk_size);
+}
+
+void gal_get_at(g_arrlist_t* arr, int n, void* buff) {
+    uint8_t* source = (uint8_t*)arr->data + (n * arr->chunk_size);
+    memcpy(buff, source, arr->chunk_size);
+
 }
 
 void gal_append(g_arrlist_t* arr, void* entry) {
@@ -230,6 +244,15 @@ void gal_append(g_arrlist_t* arr, void* entry) {
         arr->capacity *= 2;
     }
     memcpy((uint8_t*)arr->data + (arr->chunk_size * arr->size++), entry, arr->chunk_size);
+    // You want: (size - 1) * chunk_size
+}
+
+
+
+int gal_cmp_at(g_arrlist_t* arr, int n, void* cmp_to) {
+    uint8_t* target = (uint8_t*)arr->data + (n * arr->chunk_size);
+    int ret =  memcmp(target, cmp_to, arr->chunk_size);
+    return ret;
 }
 
 void gal_trim(g_arrlist_t* arr, int _set_zero) {

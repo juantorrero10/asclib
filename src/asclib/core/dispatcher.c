@@ -70,6 +70,7 @@ static void log_decision_state(worker_t* w, char* buff) {
                 num_to_show = w->tasks.arr[i]->wait_for.timestamp - get_time_ms();
                 if (num_to_show > __INT64_MAX__) num_to_show = 0;
             } else {
+                if (w->tasks.arr[i]->w_reason == WAIT_TASK) num_to_show &= 0xFFFFFFFF;
                 num_to_show = w->tasks.arr[i]->wait_for.timestamp;
             }
             spaces = 20 - strlen(names[w->tasks.arr[i]->status]);
@@ -169,12 +170,12 @@ void* dispatcher(void* arg) {
         size_t buffer = w->tasks.current;
         log_decision_state(w, states);
         #endif        
-    
+        int idx = 0;
 
         // Next task election.
         for (size_t i = 0; i < w->tasks.capacity; i++)
         {
-            int idx = (w->tasks.current + 1 + i) % w->tasks.capacity;    
+            idx = (w->tasks.current + 1 + i) % w->tasks.capacity;    
 
             if (!TCB_AT(idx)) continue;
 
@@ -274,7 +275,7 @@ void* dispatcher(void* arg) {
     }
 
     //Free the TLS objects
-    __free_occupation_map();
+    __free_taskmem_objs();
     __io_free_hashmap();
     __hm_await_free();
     heap_dealloc(&timers);

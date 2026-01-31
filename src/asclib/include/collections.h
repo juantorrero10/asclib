@@ -78,6 +78,9 @@ g_arrlist_t* gal_alloc(size_t initial_capacity, size_t chunk_size);
 void gal_dealloc(g_arrlist_t** arr);
 void gal_append(g_arrlist_t* arr, void* entry);
 void gal_trim(g_arrlist_t* arr, int _set_zero);
+void gal_set_at(g_arrlist_t* arr, int n, void* data);
+void gal_get_at(g_arrlist_t* arr, int n,  void* buff);
+int gal_cmp_at(g_arrlist_t* arr, int n, void* cmp_to);
 
 
 #endif // HASHMAP_H_
