@@ -19,7 +19,7 @@
 #include <task_mem.h>
 #include <ascerr.h>
 #include <task_stack.h>
-#include <wrappers.h>
+#include <runtime.h>
 #include <collections.h>
 
 // Managed by sleep.c
@@ -286,12 +286,11 @@ void* dispatcher(void* arg) {
         asc_error(ERR_TASK_OUTLIVED_FATHER, "dispatcher()", (any_t)leaked_tasks);
     }
 
-    //Free the TLS objects
+    //Free the (Thread)LS objects
     __free_taskmem_objs();
     __io_free_hashmap();
     __hm_await_free();
-    heap_dealloc(&timers);
-    
+    heap_dealloc(&timers);    
 
     return NULL;
 } 

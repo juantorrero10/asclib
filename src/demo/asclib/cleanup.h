@@ -51,5 +51,8 @@ void __drop_cleanup_register(object_drop_autocleanup_t oda);
 })
 
 
+#define drop_task(handle) __task_drop_impl(handle)
+#define drop __task_drop_impl((task_handle_t){ -1 } )
+
 #endif // DEMO_ASCLIB_CLEANUP_H_
 

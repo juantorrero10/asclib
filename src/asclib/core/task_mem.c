@@ -80,6 +80,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
         .w_reason = WAIT_NONE,
         .wait_for.fd = -1,
         .ctx = { 0 },
+        .tls = NULL,
         .dyn_created = 1,
         .await_group = (size_t)-1,
         .detached = 0,
@@ -180,10 +181,14 @@ void __task_destroy(task_handle_t t) {
             __drop_designated_objects(t);
             gal_dealloc(&ta->cleanup); 
         }
+        if (ta->tls) {
+            _env_call_destructors(ta);
+            free(ta->tls); 
+        }
         if (ta->arg_is_malloced) free(ta->arg);
-        if (w->tasks.arr[t]->stack)dealloc_stack(w->tasks.arr[t]);
-        w->tasks.arr[t]->stack = NULL;
-        free(w->tasks.arr[t]);
+        if (ta->stack)dealloc_stack(ta);
+        ta->stack = NULL;
+        free(ta);
     }
 
 

@@ -37,6 +37,7 @@ typedef struct _Task_Ctx_Block {
 
     //Clean up
     g_arrlist_t* cleanup;
+    void* tls;
 
     // Stack data
     uint8_t* stack;

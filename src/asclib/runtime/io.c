@@ -12,7 +12,7 @@
 #include <task_mem.h>
 #include <ascerr.h>
 #include <log.h>
-#include <wrappers.h>
+#include <runtime.h>
 #include <collections.h>
 
 #define ENABLE_GUARD_PAGE 1

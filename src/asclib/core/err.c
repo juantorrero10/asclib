@@ -101,6 +101,11 @@ void asc_error(asc_err_t err, const char* function, any_t value) {
         EXPL("Revise the order of operations.");
         break;
 
+    case WARN_KEY_READONLY:
+        RT_WRN("Key <%lx> is read-only", value.u64);
+        break;
+
+
     case WARN_RETURNING_NULL:
         RT_WRN("Operation '%s' is returning a NULL pointer when a valid value is potencially being expected.", (char*)value.ptr);
         EXPL("Could produce a \033[1m\033[91mSIGSEGV\033[0m if not handled gracefully.");

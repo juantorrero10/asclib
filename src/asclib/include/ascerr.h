@@ -27,6 +27,7 @@ typedef enum {
     WARN_TASK_ALREADY_FINISHED,
     WARN_RETURNING_NULL,
     WARN_STALE_HANDLE,
+    WARN_KEY_READONLY
 } asc_err_t;
 
 typedef enum {

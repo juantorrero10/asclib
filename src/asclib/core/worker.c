@@ -37,6 +37,7 @@ worker_t* worker_create(size_t n_tasks, ...) {
             .cleanup = NULL,
             .status = UNITIALIZED, 
             .dyn_created = 0,
+            .tls = NULL,
             .ctx = { 0 },
             .w_reason = WAIT_NONE,
             .wait_for.fd = -1,
@@ -91,6 +92,10 @@ void worker_destroy(worker_t* w) {
             dealloc_stack(w->tasks.arr[i]);
             
         }
+        if (w->tasks.arr[i]->tls) {
+            _env_call_destructors(w->tasks.arr[i]);
+            free(w->tasks.arr[i]->tls); 
+        };
         free(w->tasks.arr[i]);
     }
     free(w->returned_array);
