@@ -23,9 +23,10 @@ typedef enum {
     ERR_TASK_OUTLIVED_DESTROYER,
     WARN_AWAITING_DETACHED_TASK = _ASCERR_WARN_START,
     WARN_TRACKING_UNMARKED_OBJECT,
+    WARN_TASK_ALREADY_FINISHED,
     WARN_RETURNING_NULL,
     WARN_STALE_HANDLE,
-} asclib_err_t;
+} asc_err_t;
 
 typedef enum {
     IO_OK,
@@ -33,7 +34,7 @@ typedef enum {
     IO_PANIC_LOCKED_FD,
     IO_ERROR_FILE_NOT_FOUND = _ASCERR_ERR_START,
     IO_WARN_NETWORK_TIMEOUT = _ASCERR_WARN_START,
-} asclib_err_io_t;
+} io_err_t;
 
 typedef enum {
     CHAN_OK = 0,
@@ -41,12 +42,13 @@ typedef enum {
     CHAN_PANIC_STATE_CORRUPTION, // Task_id, expected status, gotten status
     CHAN_ERROR_RX_INVALID = _ASCERR_ERR_START, // NO args
     CHAN_ERROR_RX_LOCKED,       // Requester
+    CHAN_ERROR_TX_LOCKED,
     CHAN_ERROR_ALREADY_USED,
     CHAN_ERROR_DEAD_CHANNEL,    // NO args 
     CHAN_ERROR_NULL_PTR,        // NO args
     CHAN_WARN_DOUBLE_DROP = _ASCERR_WARN_START, // No args
     CHAN_WARN_RETURN_NULL,      // NO args
-} asclib_err_channels_t;
+} chan_err_t;
 
 
 typedef union {
@@ -63,7 +65,7 @@ typedef union {
 #define RT_WRN(msg, ...) fprintf(stderr, "\033[4m\033[93masclib runtime warning:\033[0m "msg"\n", ##__VA_ARGS__)
 #define PK_MSG(loc, msg, ...) fprintf(stderr, "\033[1m\033[97m%s panicked:\033[0m %s\n", loc, msg, ##__VA_ARGS__)
 #define EXPL(msg, ...) fprintf(stderr, "\033[1m\033[97m ( + ) \033[0m --> "msg"\n", ##__VA_ARGS__)
-void asc_error(asclib_err_t err, const char* function, any_t number);
-void asc_io_error(asclib_err_io_t ioerr, const char* function, any_t value, any_t value2);
-void asc_chan_error(asclib_err_channels_t cerr, const char* function, any_t value, any_t value2, any_t value3);
+void asc_error(asc_err_t err, const char* function, any_t number);
+void asc_io_error(io_err_t ioerr, const char* function, any_t value, any_t value2);
+void asc_chan_error(chan_err_t cerr, const char* function, any_t value, any_t value2, any_t value3);
 #endif // ERR_H_

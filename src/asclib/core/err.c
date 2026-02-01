@@ -24,7 +24,7 @@ void panic_linux(const char* msg, const char* function) {
 
 
 
-void asc_error(asclib_err_t err, const char* function, any_t value) {
+void asc_error(asc_err_t err, const char* function, any_t value) {
 
     switch (err)
     {
@@ -91,6 +91,11 @@ void asc_error(asclib_err_t err, const char* function, any_t value) {
         EXPL("Revise the parameters of the object's creation");
         break;
 
+    case WARN_TASK_ALREADY_FINISHED:
+        RT_WRN("Tried something <0x%lx>.", value.u64);
+        EXPL("Revise the order of operations.");
+        break;
+
     case WARN_RETURNING_NULL:
         RT_WRN("Operation '%s' is returning a NULL pointer when a valid value is potencially being expected.", (char*)value.ptr);
         EXPL("Could produce a \033[1m\033[91mSIGSEGV\033[0m if not handled gracefully.");
@@ -107,7 +112,7 @@ void asc_error(asclib_err_t err, const char* function, any_t value) {
 }
 
 
-void asc_io_error(asclib_err_io_t ioerr, const char* function, any_t value, any_t value2) {
+void asc_io_error(io_err_t ioerr, const char* function, any_t value, any_t value2) {
     (void)value2;
     switch (ioerr)
     {
@@ -130,15 +135,14 @@ void asc_io_error(asclib_err_io_t ioerr, const char* function, any_t value, any_
     }
 }
 
-void asc_chan_error(asclib_err_channels_t cerr, const char* function, any_t value, any_t value2, any_t value3) {
+void asc_chan_error(chan_err_t cerr, const char* function, any_t value, any_t value2, any_t value3) {
     switch (cerr) {
         /* --- PANICS (Execution stops) --- */
         
         case CHAN_PANIC_UNAUTHORIZED:
             // value: Requester ID, value2: Owner ID
-            RT_ERR("Ownership Violation: Task<0x%lx> tried to access channel owned by Task<0x%lx>.", function, value.i64, value2.i64);
-            EXPL("MPSC channels are \033[1mStrictly Single Consumer\033[0m.");
-            EXPL("Ensure you called \033[1m\033[97mmpsc_take_rx()\033[0m or that you aren't sharing the RX end.");
+            RT_ERR("Ownership Violation: Task<0x%lx> tried to access channel end owned by Task<0x%lx>.", function, value.u64, value2.u64);
+            EXPL("Ensure you flow the owner restrictions enforced by channel type <\033[1m\033[97m%s\033[0m>.", (char*)value3.ptr);
             panic_linux("Illegal cross-task channel access.", function);
             break;
 
@@ -158,14 +162,19 @@ void asc_chan_error(asclib_err_channels_t cerr, const char* function, any_t valu
             break;
 
         case CHAN_ERROR_RX_LOCKED:
-            // value: Requester ID
-            RT_ERR("Task<%ld> tried to take the rx end of a channel but it is owned by another task.", function, value.i64);
-            EXPL("MPSC channels only support \033[1mone\033[0m waiter on the RX end at a time.");
+            // value: Requester ID typa channel
+            RT_ERR("Task<0x%lx> tried to take the rx end of a channel but it is owned by <0x%lx>.", function, value.u64, value2.u64);
+            EXPL("%s channels only support \033[1mone\033[0m owner on the RX end at a time.", (char*)value3.ptr);
+            break;
+
+        case CHAN_ERROR_TX_LOCKED:
+            // value: Requester ID, typa channel
+            RT_ERR("Task<0x%lx> tried to take the tx end of a channel but it is owned by <0x%lx>.", function, value.u64, value2.u64);
+            EXPL("%s channels only support \033[1mone\033[0m owner on the TX end at a time.", (char*)value3.ptr);
             break;
 
         case CHAN_ERROR_DEAD_CHANNEL:
             RT_ERR("Tried to use a dead channel.", function);
-            EXPL("Caught this error due to tracking but it would have produce a \033[1m\033[91mSIGSEGV\033[0m otherwise.");
             break;
 
         case CHAN_ERROR_ALREADY_USED:

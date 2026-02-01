@@ -15,6 +15,26 @@
 #define OS_MAGIC_TRACK 0x4F4E5348
 #define OS_MAGIC_CLOSED 0xDEADBEEF
 
+#define ASSERT_OWNER(chan, tx_rx, fn) do {\
+    task_handle_t ha = (tx_rx)? chan->rx_owner : chan->tx_owner;\
+    if (ha == (size_t)-1) break;\
+    if (ha != GET_FULL_HANDLE()) {\
+        asc_chan_error(CHAN_PANIC_UNAUTHORIZED, fn, \
+            (any_t)ha, (any_t)GET_FULL_HANDLE(), (any_t)(void*)"oneshot");\
+    }\
+} while(0);
+
+#define ASSERT_FLIGHT(chan, tx_rx, fn) do {\
+    task_handle_t ha = (tx_rx)? chan->rx_owner : chan->tx_owner;\
+    chan_err_t ch = (tx_rx)? CHAN_ERROR_RX_LOCKED : CHAN_ERROR_TX_LOCKED;\
+    if (ha != (size_t)-2) {\
+        asc_chan_error(ch, fn, \
+            (any_t)ha, (any_t)GET_FULL_HANDLE(), (any_t)(void*)"oneshot");\
+    }\
+} while(0);
+
+
+
 // Managed by task_mem.c
 extern TLS g_arrlist_t* generation_map;
 
@@ -27,20 +47,29 @@ typedef struct _ASCLIB_Oneshot_TXREF_  *oneshot_tx_ref_t;
 struct _OSEND_arg {
     oneshot_t* tx;
     void* payload;
+    task_handle_t caller;
 };
 
 struct _ORECV_arg {
     oneshot_t* rx;
     void* buffer;
+    task_handle_t caller;
 };
+
+static chan_err_t check_some_errors(oneshot_t* ch, void* ptr, int tx_rx, task_handle_t caller);
 
 
 static void* __internal_oneshot_recv(void* __arg) {
     struct _ORECV_arg* args = (struct _ORECV_arg*)__arg;
     void* buffer = args->buffer; (void)buffer;
     oneshot_t* chan = args->rx; (void)chan;
+    task_handle_t caller = args->caller;
 
     free(__arg);
+
+
+    chan_err_t cerr = check_some_errors(chan, buffer, 1, caller);
+    if (cerr != CHAN_OK) task_return(chan_err_t, cerr);
 
     worker_t* w = tl_worker;
 
@@ -56,21 +85,32 @@ static void* __internal_oneshot_recv(void* __arg) {
     chan->rx_waiter = -1;
 
 
-    task_return(asclib_err_channels_t, CHAN_OK);
+    task_return(chan_err_t, CHAN_OK);
 }
 
 static void* __internal_oneshot_send(void* __arg) {
     struct _OSEND_arg* args = (struct _OSEND_arg*)__arg;
     void* payload = args->payload; (void)payload;
     oneshot_t* chan = args->tx;     (void)chan;
+    task_handle_t caller = args->caller;
 
     free(__arg);
+
+    chan_err_t cerr = check_some_errors(chan, payload, 0, caller);
+    if (cerr != CHAN_OK) task_return(chan_err_t, cerr);
 
     memcpy(chan->payload, payload, chan->payload_sz);
     chan->sent = 1;
     chan->tx_alive = 0;
 
-    task_return(asclib_err_channels_t, CHAN_OK);
+    worker_t* w = tl_worker;
+
+    if (chan->rx_waiter != (size_t)-2) {
+        w->tasks.arr[LOWER_32(chan->rx_waiter)]->status = READY;
+        w->tasks.arr[LOWER_32(chan->rx_waiter)]->w_reason = WAIT_NONE;
+    }
+
+    task_return(chan_err_t, CHAN_OK);
 }
 
 oneshot_pair_t oneshot_new(size_t payload_size, int __track_closure) {
@@ -83,7 +123,7 @@ oneshot_pair_t oneshot_new(size_t payload_size, int __track_closure) {
     oneshot_t* chan = malloc(sizeof(oneshot_t));
     chan->rx_owner = GET_FULL_HANDLE();
     chan->rx_waiter = -2;
-    chan->tx_alive = 0;
+    chan->tx_alive = 1;
     chan->payload_sz = payload_size;
     chan->tx_owner = GET_FULL_HANDLE();
     chan->payload = malloc(sizeof(payload_size));
@@ -91,7 +131,7 @@ oneshot_pair_t oneshot_new(size_t payload_size, int __track_closure) {
     return (oneshot_pair_t)chan;
 }
 
-void oneshot_free(oneshot_pair_t* p) {
+static void oneshot_free(oneshot_pair_t* p) {
     if (!(*p)) return;
     oneshot_t** c = (oneshot_t**)p;
     free((*c)->payload);
@@ -99,74 +139,196 @@ void oneshot_free(oneshot_pair_t* p) {
     *c = NULL;
 }
 
-static task_handle_t check_some_errors(oneshot_t* ch, void* ptr, int tx_rx) {
+static chan_err_t check_some_errors(oneshot_t* ch, void* ptr, int tx_rx, task_handle_t caller) {
 
-    char* f = (tx_rx)? "CHANNELS::asc_oneshot_send()" : "CHANNELS::asc_oneshot_recv()";
-
-    worker_t* w = tl_worker;
-    ASSERT_CONTEXT(w, f);
-
-    task_handle_t te = GET_FULL_HANDLE();
+    char* f = (tx_rx)? "CHANNELS::asc_oneshot_recv()" : "CHANNELS::asc_oneshot_send()";
 
     
     if (!ch || !ptr){ asc_chan_error(CHAN_ERROR_NULL_PTR, 
-        f, (any_t)0, (any_t)0, (any_t)0); return -1;}
+        f, (any_t)0, (any_t)0, (any_t)0); return CHAN_ERROR_NULL_PTR;}
 
     if (!tx_rx) {
-        if (ch->tx_owner != te) {
+        if (ch->tx_owner != caller) {
             asc_chan_error(CHAN_PANIC_UNAUTHORIZED, f, 
-                (any_t)ch->rx_owner, (any_t)te, (any_t)0);
+                (any_t)ch->rx_owner, (any_t)caller, (any_t)(void*)"oneshot");
         }
         if (ch->sent == 1) {
             asc_chan_error(CHAN_ERROR_ALREADY_USED, f, (any_t)0, (any_t)0, (any_t)0);
-            return -1;
+            return CHAN_ERROR_ALREADY_USED;
         } 
     } else {
-        if (ch->rx_owner != te) {
+        if (ch->rx_owner != caller) {
             asc_chan_error(CHAN_PANIC_UNAUTHORIZED, f, 
-                (any_t)ch->rx_owner, (any_t)te, (any_t)0);
+                (any_t)ch->rx_owner, (any_t)caller, (any_t)0);
         }
         if (ch->rx_waiter == (size_t)-1) {
             asc_chan_error(CHAN_ERROR_ALREADY_USED, f, (any_t)0, (any_t)0, (any_t)0);
-            return -1;
+            return CHAN_ERROR_ALREADY_USED;
         }
     }
 
     if (ch->sent == 0 && ch->tx_alive == 0) {
         asc_chan_error(CHAN_ERROR_DEAD_CHANNEL, f, (any_t)0, (any_t)0, (any_t)0);
-        return -1;
+        return CHAN_ERROR_DEAD_CHANNEL;
     }
 
     return 0;
 }
 
+
+oneshot_rx_ref_t oneshot_move_rx(oneshot_pair_t rx) {
+    oneshot_t* chan = (oneshot_t*)rx;
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::oneshot_move_rx()");
+    ASSERT_OWNER(chan, 1, "CHANNELS::oneshot_move_rx()");
+    chan->rx_owner = -2;
+    return(oneshot_rx_ref_t)chan;
+}
+
+oneshot_rx_t oneshot_take_rx(oneshot_rx_ref_t ref) {
+    oneshot_t* chan = (oneshot_t*)ref;
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::oneshot_move_rx()");
+    ASSERT_FLIGHT(chan, 1, "CHANNELS::oneshot_move_rx()");
+    chan->rx_owner = GET_FULL_HANDLE();
+    return(oneshot_rx_t)chan;
+}
+
+oneshot_tx_ref_t oneshot_move_tx(oneshot_pair_t tx) {
+    oneshot_t* chan = (oneshot_t*)tx;
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::oneshot_move_tx()");
+    if (chan->tx_owner == (size_t)-2) return (oneshot_tx_ref_t)chan;
+    ASSERT_OWNER(chan, 0, "CHANNELS::oneshot_move_tx()");
+    chan->tx_owner = -2;
+    return(oneshot_tx_ref_t)chan;
+}
+
+oneshot_tx_t oneshot_take_tx(oneshot_tx_ref_t ref) {
+    oneshot_t* chan = (oneshot_t*)ref;
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::oneshot_move_rx()");
+    ASSERT_FLIGHT(chan, 0, "CHANNELS::oneshot_move_rx()");
+    chan->tx_owner = GET_FULL_HANDLE();
+    return(oneshot_tx_t)chan;
+}
+
+void oneshot_drop_tx(oneshot_tx_t tx) {
+    oneshot_t* chan = (oneshot_t*)tx;
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::oneshot_drop_tx()");
+    ASSERT_OWNER(chan, 0, "CHANNELS::oneshot_drop_tx()");
+
+    if (chan->rx_waiter != (size_t)-1 && chan->rx_waiter != (size_t)-2 && !IS_STALE(chan->rx_waiter)) {
+        w->tasks.arr[LOWER_32(chan->rx_waiter)]->status = READY;
+        w->tasks.arr[LOWER_32(chan->rx_waiter)]->w_reason = WAIT_NONE;
+        chan->rx_waiter = -1;
+    }
+
+    chan->tx_alive = 0;
+    if (chan->rx_owner == (size_t)-1) {
+        switch (chan->magic)
+        {
+        case OS_MAGIC_TRACK:
+            chan->magic = OS_MAGIC_CLOSED;
+            break;
+        case OS_MAGIC_CLOSED:
+            asc_chan_error(CHAN_WARN_DOUBLE_DROP, 
+                "CHANNELS::oneshot_drop_tx()", (any_t)0, (any_t)0, (any_t)0);
+            break;
+        
+        default:
+            oneshot_free((oneshot_pair_t*)&chan);
+            break;
+        }
+    }
+}
+
+void oneshot_drop_rx(oneshot_rx_t tx) {
+    oneshot_t* chan = (oneshot_t*)tx;
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::oneshot_drop_rx()");
+    ASSERT_OWNER(chan, 1, "CHANNELS::oneshot_drop_rx()");
+
+    chan->rx_owner = (size_t)-1;
+    if (chan->tx_alive == 0) {
+        switch (chan->magic)
+        {
+        case OS_MAGIC_TRACK:
+            chan->magic = OS_MAGIC_CLOSED;
+            break;
+        case OS_MAGIC_CLOSED:
+            asc_chan_error(CHAN_WARN_DOUBLE_DROP, 
+                "CHANNELS::oneshot_drop_rx()", (any_t)0, (any_t)0, (any_t)0);
+            break;
+        
+        default:
+            oneshot_free((oneshot_pair_t*)&chan);
+            break;
+        }
+    }
+}
+
+void oneshot_assert_closed(oneshot_pair_t pair) {
+    if (!pair) { asc_chan_error(CHAN_ERROR_NULL_PTR, "CHANNELS::oneshot_assert_closed()", (any_t)0, (any_t)0, (any_t)0)  ;return;}
+
+    oneshot_t* chan = (oneshot_t*)pair;
+
+    switch (chan->magic)
+    {
+    case OS_MAGIC_CLOSED:
+        oneshot_free((oneshot_pair_t*)&chan);
+        break;
+
+    case OS_MAGIC_TRACK:
+        if (chan->tx_alive == 1) {
+            asc_error(PANIC_GENERIC_ASSERTION, "CHANNELS::oneshot_assert_closed()", 
+                (any_t)(void*)"\033[1m\033[97mTX channel end was not closed\033[0m.");
+        } else if (chan->rx_owner != (size_t)-1) {
+            asc_error(PANIC_GENERIC_ASSERTION, "CHANNELS::mpsc_assert_closed()", 
+                (any_t)(void*)"\033[1m\033[97mRX channel end was not closed\033[0m.");
+        } else {
+            oneshot_free((oneshot_pair_t*)&chan);
+        }
+        break;
+    
+    default:
+        asc_error(WARN_TRACKING_UNMARKED_OBJECT, "CHANNELS::mpsc_assert_closed()", (any_t)(void*)"oneshot channel");
+        break;
+    }
+}
+
 task_handle_t asc_oneshot_recv(oneshot_rx_t rx, void* buffer) {
 
-    if (check_some_errors((oneshot_t*)rx, buffer, 0) != 0) return -1;
+    worker_t* w = tl_worker;    
+    ASSERT_CONTEXT(w, "CHANNELS::asc_oneshot_recv()");
 
 
     struct _ORECV_arg* a = malloc(sizeof(struct _ORECV_arg));
     a->buffer = buffer;
     a->rx = (oneshot_t*)rx;
+    a->caller = GET_FULL_HANDLE();
     
     return __task_create_ex( 
         (task_entry_t){.fptr = __internal_oneshot_recv, .arg_malloced = 0, .value = (void*)a, .arg_size = sizeof(void*)},
-        2048,
+        4096,
         1
     );
 }
 
 task_handle_t asc_oneshot_send(oneshot_tx_t tx, void* payload) {
 
-    if (check_some_errors((oneshot_t*)tx, payload, 1) != 0) return -1;
+    worker_t* w = tl_worker;    
+    ASSERT_CONTEXT(w, "CHANNELS::asc_oneshot_send()");
 
     struct _OSEND_arg* a = malloc(sizeof(struct _OSEND_arg));
     a->payload = payload;
     a->tx = (oneshot_t*)tx;
+    a->caller = GET_FULL_HANDLE();
     
     return __task_create_ex( 
         (task_entry_t){.fptr = __internal_oneshot_send, .arg_malloced = 0, .value = (void*)a, .arg_size = sizeof(void*)},
-        2048,
+        4096,
         1
     );
 }

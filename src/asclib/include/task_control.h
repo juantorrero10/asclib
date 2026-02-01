@@ -78,6 +78,13 @@ typedef struct _Await_All_Result {
     (uint64_t)temp << 32 | w->tasks.current;\
 })
 
+#define IS_STALE(th1) ({\
+    size_t index = LOWER_32(th1);\
+    uint32_t buff = 0;\
+    gal_get_at(generation_map, index, &buff);\
+    (th1 >> 32) != buff;\
+})
+
 #define HANDLE_IGNORE (size_t)-1
 
 void* __task_alloc_ret_val(size_t s, void* v);

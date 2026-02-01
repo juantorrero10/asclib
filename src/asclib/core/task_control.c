@@ -31,6 +31,7 @@ static void* __all_result_get_method();
 static void __all_result_none_method();
 
 static void remove_dependencies();
+void task_detach(task_handle_t target);
 
 // Clean start after a UNITIALIZED task gets picked up by dispatcher
 __attribute__((noreturn))
@@ -219,7 +220,7 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
     // Set the state to race.
     SET_VIRTUAL_RACE(virtual);
 
-    int already_finished = -1;
+    ssize_t already_finished = -1;
 
     // Set the await groups
     for (size_t i = 0; i < num_task; i++) {
@@ -230,12 +231,25 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
     }
 
     if (already_finished != -1) {
+        // This behaviour is allowed although uncouraged:
+        // asc_error(WARN_TASK_ALREADY_FINISHED, "await_any()", (any_t)already_finished);
         result = w->tasks.arr[already_finished]->returned;
+        size_t idx = 0;
+        for (size_t i = 0; i < num_task; i++)
+        {
+            if (handles[i] == (size_t)already_finished) continue;
+            if (TCB_AT(handles[idx])) w->tasks.arr[handles[idx]]->detached = 1;
+            ret.losers[idx] = LOWER_32(handles[i]);
+            idx++;
+        }
         free(gens);
         __task_destroy(already_finished);
         __task_yield_impl();
         ret.winner_return = result;
         ret.winner = already_finished;
+        ret.num_losers = num_task -1;
+        last_any_result = malloc(sizeof(any_result));
+        memcpy(last_any_result, &ret, sizeof(any_result));
         return ret;
     }
 
@@ -415,14 +429,15 @@ void __task_wait_on_fd(int fd, uint32_t events) {
     //t->w_reason = WAIT_NONE;
 }
 
-void task_detach() {
+void task_detach(task_handle_t target) {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "detach()");
-    w->tasks.arr[w->tasks.current]->detached = 1;
+    if (target == (size_t)-1) target = w->tasks.current;
+    w->tasks.arr[target]->detached = 1;
 
     // Alert any task that he have detached
-    if (!hmawait || w->tasks.arr[w->tasks.current]->await_group == (size_t)-1) return;    
-    remove_dependencies(w->tasks.arr[w->tasks.current]->await_group);
+    if (!hmawait || w->tasks.arr[target]->await_group == (size_t)-1) return;    
+    remove_dependencies(w->tasks.arr[target]->await_group);
     
 }
 
@@ -438,6 +453,8 @@ void __task_drop_impl(task_handle_t th) {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "__task_drop_impl()");
 
+    th = LOWER_32(th);
+
     // Self drop call
     if (th == (size_t)-1) { th = w->tasks.current;}
     // Finish if invalid;
@@ -449,6 +466,7 @@ void __task_drop_impl(task_handle_t th) {
 
     // Eliminate from rotation (important because of recursion).
     w->tasks.arr[th]->status = FINISHED;
+
 
     TCB* t = w->tasks.arr[th];
 

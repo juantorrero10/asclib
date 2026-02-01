@@ -100,7 +100,7 @@ typedef struct _CleanUP_Routine {
 
 
 void __task_yield_impl();
-void task_detach();
+void task_detach(task_handle_t t);
 void* __task_alloc_ret_val(size_t s, void* src);
 void* __task_await_impl(task_handle_t th, int expect);
 any_result __task_await_any_impl(task_handle_t* handles, size_t count);
@@ -144,14 +144,26 @@ void __task_drop_impl(task_handle_t th);
 /**
  * @brief Return a value from a task.
  */
-#define task_return(type, var) \
+#define end_return(type, var) \
     do { \
         type __temp = var; \
         return __task_alloc_ret_val(sizeof(type), &__temp); \
     } while(0); }
 
 // Return nothing
-#define task_return_void() return NULL; }
+#define end_return_void() return NULL; }
+
+/**
+ * @brief Return a value from a task.
+ */
+#define task_return(type, var) \
+    do { \
+        type __temp = var; \
+        return __task_alloc_ret_val(sizeof(type), &__temp); \
+    } while(0);
+
+// Return nothing
+#define task_return_void() return NULL;
 
 
 
@@ -231,7 +243,7 @@ void __task_drop_impl(task_handle_t th);
  * Detaching also makes a task cleaup itself and guarantes to the runtime that it would not leak.
  * Return value of detached tasks get lost. 
  */
-#define detach do { task_detach(); } while(0);
+#define detach do { task_detach((size_t)-1); } while(0);
 
 #define drop_task(handle) __task_drop_impl(handle)
 #define drop __task_drop_impl((size_t)-1)

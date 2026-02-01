@@ -37,6 +37,14 @@ typedef struct _ASCLIB_Oneshot_TXREF_  *oneshot_tx_ref_t;
 task_handle_t asc_oneshot_recv(oneshot_rx_t rx, void* buffer);
 task_handle_t asc_oneshot_send(oneshot_tx_t tx, void* payload);
 oneshot_pair_t oneshot_new(size_t payload_size, int __track_closure);
+oneshot_rx_ref_t oneshot_move_rx(oneshot_pair_t rx);
+oneshot_rx_t oneshot_take_rx(oneshot_rx_ref_t ref);
+oneshot_tx_ref_t oneshot_move_tx(oneshot_pair_t tx);
+oneshot_tx_t oneshot_take_tx(oneshot_tx_ref_t ref);
+void oneshot_assert_closed(oneshot_pair_t pair);
+void oneshot_drop_rx(oneshot_rx_t tx);
+void oneshot_drop_tx(oneshot_tx_t tx);
+
 void oneshot_free(oneshot_pair_t* p);
 
 
@@ -50,11 +58,13 @@ typedef enum {
     CHAN_PANIC_STATE_CORRUPTION, // Task_id, expected status, gotten status
     CHAN_ERROR_RX_INVALID = _ASCERR_ERR_START, // NO args
     CHAN_ERROR_RX_LOCKED,       // Requester
+    CHAN_ERROR_TX_LOCKED,
     CHAN_ERROR_ALREADY_USED,
     CHAN_ERROR_DEAD_CHANNEL,    // NO args 
     CHAN_ERROR_NULL_PTR,        // NO args
     CHAN_WARN_DOUBLE_DROP = _ASCERR_WARN_START, // No args
     CHAN_WARN_RETURN_NULL,      // NO args
-} asclib_err_channels_t;
+} chan_err_t;
+
 
 #endif // DEMO_ASCLIB_SYNC_H_

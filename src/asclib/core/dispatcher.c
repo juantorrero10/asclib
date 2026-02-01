@@ -29,6 +29,9 @@ extern TLS heap_t* timers;
 // Managed by task_control.c
 extern TLS uu_hash_map* hmawait;
 
+// Managed by task_mem.c
+extern TLS g_arrlist_t* generation_map;
+
 
 // Thread-local worker variable
 TLS worker_t* tl_worker = NULL;
@@ -146,6 +149,15 @@ void* dispatcher(void* arg) {
     TCB* t2 = NULL; (void)t2;
 
     __alloc_occupation_map();
+    if (!generation_map) {
+        generation_map = gal_alloc(w->tasks.initial, sizeof(uint32_t));
+        uint32_t one = 1;
+        for (size_t i = 0; i < w->tasks.initial; i++)
+        {
+            gal_append(generation_map, &one);
+        }
+        
+    }
     timers = heap_alloc(TIMERS_INITIAL_CAP);
 
 
@@ -265,7 +277,7 @@ void* dispatcher(void* arg) {
 
     int leaked_tasks = 0;
     for (size_t i = w->tasks.initial; i < w->tasks.capacity; i++) {
-        if (_get_tcbstate_at(i) && !w->tasks.arr[i]->detached) { // Slot is still active
+        if (TCB_AT(i) && !w->tasks.arr[i]->detached && STATUS_OF(i) != FINISHED) { // Slot is still active
             leaked_tasks++;
         }
     }

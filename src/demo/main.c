@@ -2,36 +2,60 @@
 #include <stdio.h>
 #include "asclib/core.h"
 #include "asclib/sync.h"
+#include "asclib/io.h"
+
+#include <string.h>
 
 
-async(task, oneshot_tx_t tx) {
-    await(asc_sleep(2000));
+async(producer, mpsc_tx_t tx; int id) {
 
-    int p = 4;
+    int data = 0;
+    
+    for (size_t i = 0; i < 5; i++)
+    {
+        data = (arg(id) * 10) + i;
+        printf("[P%d]: Sending -> <%d>\n", arg(id), data);
+        await(asc_mpsc_send(arg(tx), &data));
+    }
+    
+    data = (arg(id) * 10) + 5;
+    printf("[P%d]: Sending -> <%d> (Expect block)\n", arg(id), data);
+    await(asc_mpsc_send(arg(tx), &data));
+    mpsc_drop_tx(arg(tx));
+    printf("[P%d]: Closed connection!\n", arg(id));
 
-    await(asc_oneshot_send(arg(tx), &p));
-
-    task_return_void();
+    end_return_void();
 }
 
+async(consumer, mpsc_rx_ref_t rx) {
+
+    await(asc_sleep(2000));
+    mpsc_rx_t rx = mpsc_take_rx(arg(rx));
+    int buffer;
+    for (size_t i = 0; i < 8; i++)
+    {
+        await(asc_mpsc_recv(rx, &buffer));
+        printf("[Consumer]: Popped: %d\n", buffer);
+    }
+    mpsc_drop_rx(rx);
+    end_return_void();
+}
 
 async(main_task) {
 
-    int buffer;
+    mpsc_pair_t pair = mpsc_new(4, 10, 1);
 
-    await(asc_sleep(100));
-    
-    oneshot_pair_t os = oneshot_new(4, 1);
+    task_handle_t t1 = task_spawn(consumer, .rx = mpsc_move_rx(pair));
 
-    task_spawn(task, .tx = (oneshot_tx_t)os);
+    await_all(
+        task_spawn(producer, .tx = mpsc_clone_tx(pair), .id = 1),
+        task_spawn(producer, .tx = mpsc_clone_tx(pair), .id = 2)
+    ).none();
 
-    if (await_ret(asclib_err_channels_t, asc_oneshot_recv((oneshot_rx_t)os, &buffer)) == CHAN_OK) {
-        printf("Finished ok! {%d}\n", buffer);
-    }
+    await(t1);
 
-    oneshot_free(&os);
-
-    task_return_void();
+    mpsc_assert_closed(pair);
+    end_return_void();
 }
 
 int main() {
@@ -40,9 +64,8 @@ int main() {
     worker_t* w = worker_create(1, task_entry(main_task));
 
     worker_run(w);
-    printf("Returned!\n");
     worker_await_all(w);
+    printf("Returned!\n");
     worker_destroy(w);
-    printf("End program!!\n");
     return 0;
 }
