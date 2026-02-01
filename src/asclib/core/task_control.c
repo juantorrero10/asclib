@@ -30,6 +30,8 @@ static void* __any_result_select_method();
 static void* __all_result_get_method();
 static void __all_result_none_method();
 
+static void remove_dependencies();
+
 // Clean start after a UNITIALIZED task gets picked up by dispatcher
 __attribute__((noreturn))
 void task_trampoline(void) {
@@ -66,45 +68,7 @@ void task_trampoline(void) {
 
     // See if we are being waited for by another task, by the awaiting group.
     if (t->await_group != (size_t)-1 && !t->detached) {
-        uint64_t old = 0;
-        switch (_get_tcbstate_at(t->await_group)) {
-            case VIRTUAL_RACE:
-            case TCB_STATE:
-            
-                for (ssize_t i = hmawait->highest_index; i >= 0; i--)
-                {
-                    if (!hmawait->occ[i]) continue;
-                    if (LOWER_32(hmawait->map[i].v) == t->await_group && STATUS_OF(hmawait->map[i].k) != FINISHED) {
-                        assert(hm_remove_entry(hmawait, hmawait->map[i].k));
-                        STATUS_OF(hmawait->map[i].k) = READY;
-                    }
-                } break;
-
-            case VIRTUAL_JOINED:
-                // Substract 1 from the joined depedency
-                old = (uintptr_t)w->tasks.arr[t->await_group];
-                old--;
-                w->tasks.arr[t->await_group] = (TCB*)old;
-
-                // if none remaining ready up all waiters
-                if (w->tasks.arr[t->await_group] == NULL) {
-                    for (ssize_t i = hmawait->highest_index; i >= 0; i--)
-                    {
-                        if (!hmawait->occ[i]) continue;
-                        if (LOWER_32(hmawait->map[i].v) == t->await_group && STATUS_OF(hmawait->map[i].k) != FINISHED) {
-                            assert(hm_remove_entry(hmawait, hmawait->map[i].k));
-                            STATUS_OF(hmawait->map[i].k) = READY;
-                    }
-                    } 
-                }break;
-                
-                
-
-            default:
-                assert(0);
-                break;
-        }
-        
+        remove_dependencies(t->await_group);
     }
 
     if (t->detached) {
@@ -455,32 +419,10 @@ void task_detach() {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "detach()");
     w->tasks.arr[w->tasks.current]->detached = 1;
-    size_t curr;
 
     // Alert any task that he have detached
     if (!hmawait || w->tasks.arr[w->tasks.current]->await_group == (size_t)-1) return;    
-    for (ssize_t i = hmawait->highest_index; i >= 0; i--)
-    {
-        if (!hmawait->occ[i]) continue;
-        curr = hmawait->map[i].k;
-        if (LOWER_32(hmawait->map[i].v) == w->tasks.arr[w->tasks.current]->await_group
-            && STATUS_OF(curr) == WAITING && _get_tcbstate_at(curr)) {
-            // if its dependency is "virtual joined" we only decrement the number
-            if (IS_JOINED(LOWER_32(hmawait->map[i].v))) {
-                uintptr_t old = (uintptr_t)w->tasks.arr[LOWER_32(hmawait->map[i].v)];
-                old--;
-                w->tasks.arr[LOWER_32(hmawait->map[i].v)] = (TCB*)old;
-                if (old == 0) { 
-                    STATUS_OF(curr) = READY; 
-                    assert(hm_remove_entry(hmawait, hmawait->map[i].k));
-                }
-                continue;
-            }
-            // Otherwise simply ready the waiter
-            assert(hm_remove_entry(hmawait, hmawait->map[i].k));
-            STATUS_OF(curr) = READY;
-        }
-    }
+    remove_dependencies(w->tasks.arr[w->tasks.current]->await_group);
     
 }
 
@@ -531,13 +473,7 @@ void __task_drop_impl(task_handle_t th) {
 
     // Ready up any that might be waiting for the dropped task.
     // Reverse search, more efficient since awaiting tends to follow a stack, although not exactly a stack.
-    for (ssize_t i = hmawait->highest_index; i >= 0; i--)
-    {
-        if (!hmawait->occ[i]) continue;
-        if (hmawait->map[i].v == th && STATUS_OF(hmawait->map[i].k) != FINISHED) {
-            STATUS_OF(hmawait->map[i].k) = READY;
-        }
-    }
+    remove_dependencies(th);
 
     if (th < w->tasks.initial) { 
         // Signal that one task has finished
@@ -606,4 +542,28 @@ static void __all_result_none_method(){
 
 void __hm_await_free() {
     hm_dealloc(&hmawait);
+}
+
+static void remove_dependencies(task_handle_t target) {
+    worker_t* w = tl_worker;
+    size_t k, v, rem;
+    target &= 0xFFFFFFFF;
+
+    for (ssize_t i = hmawait->highest_index; i >= 0; i--)
+    {
+        if (!hmawait->occ[i]) continue;
+        k = hmawait->map[i].k;
+        v = LOWER_32(hmawait->map[i].v);
+        if (v == target && STATUS_OF(k) != FINISHED && TCB_AT(k)) {
+            if (IS_JOINED(v)) {
+                rem = (uintptr_t)w->tasks.arr[v];
+                rem--;
+                w->tasks.arr[v] = (TCB*)rem;
+                if (rem > 0) continue;
+            }
+            STATUS_OF(k) = READY;
+            assert(hm_remove_entry(hmawait, k));
+        }
+    }
+    
 }

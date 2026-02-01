@@ -3,12 +3,20 @@
 
 #include <collections.h>
 
+
 typedef struct _ASCLIB_Oneshot_Channel {
     uint32_t magic;
     void* payload;
+    size_t payload_sz;
     int sent;
+
+    // -1: closed -2: reference state
     task_handle_t tx_owner;
     task_handle_t rx_owner;
+
+    // -1: closed, -2: no waiters
+    int tx_alive;
+    task_handle_t rx_waiter;
 } oneshot_t;
 
 typedef struct _ASCLIB_mpsc_Channel {

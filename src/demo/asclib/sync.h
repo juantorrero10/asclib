@@ -27,20 +27,34 @@ task_handle_t asc_mpsc_send(mpsc_tx_t tx, void* data);
 task_handle_t asc_mpsc_recv(mpsc_rx_t rx, void* buff);
 void mpsc_assert_closed(mpsc_pair_t pair);
 
+//ONESHOTS
+typedef struct _ASCLIB_Oneshot_pair_   *oneshot_pair_t;
+typedef struct _ASCLIB_Oneshot_RX_     *oneshot_rx_t;
+typedef struct _ASCLIB_Oneshot_RXREF_  *oneshot_rx_ref_t;
+typedef struct _ASCLIB_Oneshot_TX_     *oneshot_tx_t;
+typedef struct _ASCLIB_Oneshot_TXREF_  *oneshot_tx_ref_t;
+
+task_handle_t asc_oneshot_recv(oneshot_rx_t rx, void* buffer);
+task_handle_t asc_oneshot_send(oneshot_tx_t tx, void* payload);
+oneshot_pair_t oneshot_new(size_t payload_size, int __track_closure);
+void oneshot_free(oneshot_pair_t* p);
+
+
 // ERROR
 #define _ASCERR_ERR_START 100
 #define _ASCERR_WARN_START 200
 
 typedef enum {
     CHAN_OK = 0,
-    CHAN_PANIC_UNAUTHORIZED,     
-    CHAN_PANIC_STATE_CORRUPTION, 
-    CHAN_ERROR_RX_INVALID = _ASCERR_ERR_START, 
-    CHAN_ERROR_RX_LOCKED,       
-    CHAN_ERROR_DEAD_CHANNEL,    
-    CHAN_ERROR_NULL_PTR,        
-    CHAN_WARN_DOUBLE_DROP = _ASCERR_WARN_START, 
-    CHAN_WARN_RETURN_NULL,      
+    CHAN_PANIC_UNAUTHORIZED,     // Requester, owner
+    CHAN_PANIC_STATE_CORRUPTION, // Task_id, expected status, gotten status
+    CHAN_ERROR_RX_INVALID = _ASCERR_ERR_START, // NO args
+    CHAN_ERROR_RX_LOCKED,       // Requester
+    CHAN_ERROR_ALREADY_USED,
+    CHAN_ERROR_DEAD_CHANNEL,    // NO args 
+    CHAN_ERROR_NULL_PTR,        // NO args
+    CHAN_WARN_DOUBLE_DROP = _ASCERR_WARN_START, // No args
+    CHAN_WARN_RETURN_NULL,      // NO args
 } asclib_err_channels_t;
 
 #endif // DEMO_ASCLIB_SYNC_H_

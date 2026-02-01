@@ -72,6 +72,12 @@ typedef struct _Await_All_Result {
     }\
 } while (0)
 
+#define GET_FULL_HANDLE() ({\
+    uint32_t temp;\
+    gal_get_at(generation_map, w->tasks.current, &temp);\
+    (uint64_t)temp << 32 | w->tasks.current;\
+})
+
 #define HANDLE_IGNORE (size_t)-1
 
 void* __task_alloc_ret_val(size_t s, void* v);

@@ -136,7 +136,7 @@ void asc_chan_error(asclib_err_channels_t cerr, const char* function, any_t valu
         
         case CHAN_PANIC_UNAUTHORIZED:
             // value: Requester ID, value2: Owner ID
-            RT_ERR("Ownership Violation: Task<%ld> tried to access channel owned by Task<%ld>.", function, value.i64, value2.i64);
+            RT_ERR("Ownership Violation: Task<0x%lx> tried to access channel owned by Task<0x%lx>.", function, value.i64, value2.i64);
             EXPL("MPSC channels are \033[1mStrictly Single Consumer\033[0m.");
             EXPL("Ensure you called \033[1m\033[97mmpsc_take_rx()\033[0m or that you aren't sharing the RX end.");
             panic_linux("Illegal cross-task channel access.", function);
@@ -166,6 +166,10 @@ void asc_chan_error(asclib_err_channels_t cerr, const char* function, any_t valu
         case CHAN_ERROR_DEAD_CHANNEL:
             RT_ERR("Tried to use a dead channel.", function);
             EXPL("Caught this error due to tracking but it would have produce a \033[1m\033[91mSIGSEGV\033[0m otherwise.");
+            break;
+
+        case CHAN_ERROR_ALREADY_USED:
+            RT_ERR("Tried to reuse an unrecyclable channel-end.", function);
             break;
 
         case CHAN_ERROR_NULL_PTR:

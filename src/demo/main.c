@@ -1,31 +1,36 @@
+
 #include <stdio.h>
-
-
 #include "asclib/core.h"
 #include "asclib/sync.h"
 
 
-async(dummy) {
-    await(asc_sleep(500));
+async(task, oneshot_tx_t tx) {
+    await(asc_sleep(2000));
+
+    int p = 4;
+
+    await(asc_oneshot_send(arg(tx), &p));
+
     task_return_void();
 }
 
-async(dummy2) {
-    await(asc_sleep(500));
-    task_return(int, 42);
-}
 
 async(main_task) {
 
-    task_handle_t t1 = task_spawn(dummy2);
+    int buffer;
 
-    await(t1);
-
-    await(asc_sleep(1000));
-
-    int n = await_ret(int, t1);
-    printf("n = %d\n", n);
+    await(asc_sleep(100));
     
+    oneshot_pair_t os = oneshot_new(4, 1);
+
+    task_spawn(task, .tx = (oneshot_tx_t)os);
+
+    if (await_ret(asclib_err_channels_t, asc_oneshot_recv((oneshot_rx_t)os, &buffer)) == CHAN_OK) {
+        printf("Finished ok! {%d}\n", buffer);
+    }
+
+    oneshot_free(&os);
+
     task_return_void();
 }
 

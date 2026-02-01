@@ -41,6 +41,7 @@ typedef enum {
     CHAN_PANIC_STATE_CORRUPTION, // Task_id, expected status, gotten status
     CHAN_ERROR_RX_INVALID = _ASCERR_ERR_START, // NO args
     CHAN_ERROR_RX_LOCKED,       // Requester
+    CHAN_ERROR_ALREADY_USED,
     CHAN_ERROR_DEAD_CHANNEL,    // NO args 
     CHAN_ERROR_NULL_PTR,        // NO args
     CHAN_WARN_DOUBLE_DROP = _ASCERR_WARN_START, // No args
