@@ -246,7 +246,7 @@ void __task_drop_impl(task_handle_t th);
 #define detach do { task_detach((size_t)-1); } while(0);
 
 #define drop_task(handle) __task_drop_impl(handle)
-#define drop __task_drop_impl((size_t)-1)
+#define drop __task_drop_impl((task_handle_t){ 0xffffffffffffffff} )
 
 
 // WORKER FUNCTION

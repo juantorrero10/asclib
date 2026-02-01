@@ -260,3 +260,10 @@ void gal_trim(g_arrlist_t* arr, int _set_zero) {
     if (_set_zero) memset((uint8_t*)arr->data + (arr->chunk_size * arr->size - 1), 0, arr->chunk_size);
     arr->size--;
 }
+
+int gal_pop(g_arrlist_t* arr, void* buffer) {
+    if (arr->size == 0) return 0;
+    memcpy(buffer, (uint8_t*)arr->data + arr->chunk_size * (arr->size - 1), arr->chunk_size);
+    arr->size--;
+    return 1;
+}

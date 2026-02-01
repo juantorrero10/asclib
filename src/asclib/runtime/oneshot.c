@@ -213,11 +213,11 @@ oneshot_tx_t oneshot_take_tx(oneshot_tx_ref_t ref) {
     return(oneshot_tx_t)chan;
 }
 
-void oneshot_drop_tx(oneshot_tx_t tx) {
+void __oneshot_forcedrop_tx(oneshot_tx_t tx) {
     oneshot_t* chan = (oneshot_t*)tx;
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "CHANNELS::oneshot_drop_tx()");
-    ASSERT_OWNER(chan, 0, "CHANNELS::oneshot_drop_tx()");
+
 
     if (chan->rx_waiter != (size_t)-1 && chan->rx_waiter != (size_t)-2 && !IS_STALE(chan->rx_waiter)) {
         w->tasks.arr[LOWER_32(chan->rx_waiter)]->status = READY;
@@ -244,11 +244,18 @@ void oneshot_drop_tx(oneshot_tx_t tx) {
     }
 }
 
-void oneshot_drop_rx(oneshot_rx_t tx) {
+void oneshot_drop_tx(oneshot_tx_t tx) {
     oneshot_t* chan = (oneshot_t*)tx;
     worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::oneshot_drop_tx()");
+    ASSERT_OWNER(chan, 0, "CHANNELS::oneshot_drop_tx()");
+    __oneshot_forcedrop_tx(tx);
+}
+
+void __oneshot_forcedrop_rx(oneshot_rx_t rx) {
+    oneshot_t* chan = (oneshot_t*)rx;
+    worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "CHANNELS::oneshot_drop_rx()");
-    ASSERT_OWNER(chan, 1, "CHANNELS::oneshot_drop_rx()");
 
     chan->rx_owner = (size_t)-1;
     if (chan->tx_alive == 0) {
@@ -267,6 +274,14 @@ void oneshot_drop_rx(oneshot_rx_t tx) {
             break;
         }
     }
+}
+
+void oneshot_drop_rx(oneshot_rx_t rx) {
+    oneshot_t* chan = (oneshot_t*)rx;
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::oneshot_drop_rx()");
+    ASSERT_OWNER(chan, 1, "CHANNELS::oneshot_drop_rx()");
+    __oneshot_forcedrop_rx(rx);
 }
 
 void oneshot_assert_closed(oneshot_pair_t pair) {

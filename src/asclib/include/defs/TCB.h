@@ -6,6 +6,8 @@
 
 typedef struct _Task_Ctx_Block TCB;
 
+typedef struct _Generic_Array_List g_arrlist_t;
+
 typedef void* task_result_t;
 
 typedef enum {
@@ -25,11 +27,16 @@ typedef enum {
 } wait_reason_t;
 
 
+
+
 typedef struct _Task_Ctx_Block {
     void* (*fptr)(void* arg);
     void* arg;            // Always 8-bytes
     int arg_is_malloced;
     ctx_t ctx;
+
+    //Clean up
+    g_arrlist_t* cleanup;
 
     // Stack data
     uint8_t* stack;

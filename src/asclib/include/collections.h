@@ -32,7 +32,7 @@ typedef struct {
     size_t capacity; 
 } u64_arrlist_t;
 
-typedef struct {
+typedef struct _Generic_Array_List {
     void* data;
     size_t chunk_size;
     size_t size;
@@ -64,6 +64,7 @@ void gal_trim(g_arrlist_t* arr, int _set_zero);
 void gal_set_at(g_arrlist_t* arr, int n, void* data);
 void gal_get_at(g_arrlist_t* arr, int n,  void* buff);
 int gal_cmp_at(g_arrlist_t* arr, int n, void* cmp_to);
+int gal_pop(g_arrlist_t* arr, void* buffer);
 
 
 #endif // HASHMAP_H_

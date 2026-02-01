@@ -246,6 +246,14 @@ void mpsc_drop_tx(mpsc_tx_t tx) {
     mpsc_t* chan = (mpsc_t*)tx;
     chan->tx_rc--;
 
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::mpsc_drop_tx()");
+
+    if (chan->rx_waiter != (task_handle_t)-1 && !IS_STALE(chan->rx_waiter)) {
+        w->tasks.arr[LOWER_32(chan->rx_waiter)]->status = READY;
+        w->tasks.arr[LOWER_32(chan->rx_waiter)]->w_reason = WAIT_NONE;
+    }
+
     if (chan->tx_rc == 0 && chan->rx_owner == MPSC_RX_STATE_CLOSED) {
         switch (chan->magic)
         {
@@ -264,9 +272,24 @@ void mpsc_drop_tx(mpsc_tx_t tx) {
     }
 }
 
-void mpsc_drop_rx(mpsc_rx_t rx) {
+void __mpsc_forcedrop_rx(mpsc_rx_t rx) {
     mpsc_t* chan = (mpsc_t*)rx;
+    
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::mpsc_drop_rx()");
+    
+    
     chan->rx_owner = MPSC_RX_STATE_CLOSED;
+
+    while (chan->tx_waiters->size > 0)
+    {
+        task_handle_t th = u64al_pop_front(chan->tx_waiters);
+        if (!IS_STALE(th) && TCB_AT(LOWER_32(th))) {
+            w->tasks.arr[LOWER_32(th)]->status = READY;
+            w->tasks.arr[LOWER_32(th)]->w_reason = WAIT_NONE;
+        }
+    }
+    
 
     if (chan->tx_rc == 0) {
         switch (chan->magic)
@@ -284,6 +307,15 @@ void mpsc_drop_rx(mpsc_rx_t rx) {
             break; 
         }
     }
+}
+
+void mpsc_drop_rx(mpsc_rx_t rx) {
+    mpsc_t* chan = (mpsc_t*)rx;
+    
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::mpsc_drop_rx()");
+    ASSERT_OWNER(chan, "CHANNELS::mpsc_drop_rx()");
+    __mpsc_forcedrop_rx(rx);
 }
 
 void mpsc_assert_closed(mpsc_pair_t pair) {

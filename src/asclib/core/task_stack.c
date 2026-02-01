@@ -21,6 +21,8 @@
 // The guard page allocation is only recommended when allocating a whole page multiple (4kb)
 // This page isn't actually mapped to physical RAM just a 'trap'
 void create_stack_frame(size_t stack_size, TCB* t, uint32_t alloc_guard) {
+
+    if (stack_size == 0) asc_error(PANIC_NO_STACK, "create_stack_frame()", (any_t)0);
     
     if (alloc_guard > 1) alloc_guard = 1;
     uint8_t* stack_temp = mmap(

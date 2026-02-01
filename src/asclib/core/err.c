@@ -44,6 +44,11 @@ void asc_error(asc_err_t err, const char* function, any_t value) {
         panic_linux("This error may cause undefined behaviour.", function);
         break;
 
+    case PANIC_NO_STACK:
+        RT_ERR_FLESS("Tried to create a task with no stack.");
+        panic_linux("You need a stack to do anything, don't call \033[1m\033[97mtask_spawn_ex()\033[0m or \033[1m\033[97mtask_entry_ex()\033[0m with 0 pages", function);
+        break;
+
     case PANIC_CONTEXT_VIOLATION:
         RT_ERR_FLESS("Illegal call to \033[1m\033[97m%s\033[0m from outside a task context.", function);
         EXPL("The runtime can only \033[4myield\033[0m, \033[4mawait()\033[0m or \033[4mdetach\033[0m inside a \033[1m\033[97masync(...)\033[0m block.");

@@ -453,6 +453,10 @@ void __task_drop_impl(task_handle_t th) {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "__task_drop_impl()");
 
+    if (th == (task_handle_t)-1) {
+        th = w->tasks.current;
+    }
+
     th = LOWER_32(th);
 
     // Self drop call
@@ -566,6 +570,7 @@ static void remove_dependencies(task_handle_t target) {
     worker_t* w = tl_worker;
     size_t k, v, rem;
     target &= 0xFFFFFFFF;
+    if (!hmawait) return;
 
     for (ssize_t i = hmawait->highest_index; i >= 0; i--)
     {

@@ -71,7 +71,6 @@ static void log_decision_state(worker_t* w, char* buff) {
         } else {
             if (w->tasks.arr[i]->status == WAITING && w->tasks.arr[i]->w_reason == WAIT_TIMER) {
                 num_to_show = w->tasks.arr[i]->wait_for.timestamp - get_time_ms();
-                if (num_to_show > __INT64_MAX__) num_to_show = 0;
             } else {
                 if (w->tasks.arr[i]->w_reason == WAIT_TASK) num_to_show &= 0xFFFFFFFF;
                 num_to_show = w->tasks.arr[i]->wait_for.timestamp;
@@ -91,7 +90,7 @@ static void log_decision_state(worker_t* w, char* buff) {
 static void lazy_wait(worker_t* w) {
     // Calculate the next timer to wake up
     int64_t timeout_ms = -1; // Default: block indefinitely if no timers
-    uint64_t now = get_time_ms(); // Use your library's time function
+    uint64_t now = get_time_ms();
     size_t top;
 
     assert(timers);
@@ -100,7 +99,8 @@ static void lazy_wait(worker_t* w) {
     while (timers->size > 0) {
         // Looking-ahead, we don't want to modify a valid entry
         top = timers->data[0];
-        if (!TCB_AT(top) || STATUS_OF(top) == FINISHED || W_REASON(top) != WAIT_TIMER) {
+        size_t idx = LOWER_32(top);
+        if (!TCB_AT(idx) || STATUS_OF(idx) == FINISHED || W_REASON(idx) != WAIT_TIMER || IS_STALE(top)) {
             heap_peek(w, timers);
             continue;
         }
@@ -109,7 +109,7 @@ static void lazy_wait(worker_t* w) {
 
 
     if (timers->size > 0) {
-        size_t top_h = timers->data[0];
+        size_t top_h = LOWER_32(timers->data[0]);
         uint64_t next_timer = w->tasks.arr[top_h]->wait_for.timestamp;
 
         if (next_timer <= now) {

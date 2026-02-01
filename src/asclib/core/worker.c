@@ -33,7 +33,8 @@ worker_t* worker_create(size_t n_tasks, ...) {
         // Minimal required initalization
         TCB template = (TCB){ 
             .fptr = te.fptr, 
-            .arg = te.value, 
+            .arg = te.value,
+            .cleanup = NULL,
             .status = UNITIALIZED, 
             .dyn_created = 0,
             .ctx = { 0 },

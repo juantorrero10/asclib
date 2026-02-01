@@ -5,6 +5,7 @@
 
 #define __DEBUG
 
+#include <ascerr.h>
 #include <task_mem.h>
 #include <task_control.h>
 #include <task_stack.h>
@@ -43,7 +44,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
     if ( ov_stack_size == 0 ) ov_stack_size = te.n_pages * PAGE_SIZE;
     
     worker_t* w = tl_worker;
-    assert(w);
+    ASSERT_CONTEXT(w, "__task_create_ex()");
 
     // Start generation map if not present
     if (!generation_map) {
@@ -72,6 +73,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
     TCB t = {
         .fptr = te.fptr,
         .arg = te.value,
+        .cleanup = NULL,
         .status = UNITIALIZED,
         .stack_size = ov_stack_size,
         .arg_is_malloced = te.arg_malloced,
@@ -173,11 +175,17 @@ void __task_destroy(task_handle_t t) {
         
         // Reset to safe defaults before freeing memory
         ta->w_reason = WAIT_NONE;
+        if (ta->cleanup) {
+            // Semi-Automatic cleanup feature
+            __drop_designated_objects(t);
+            gal_dealloc(&ta->cleanup); 
+        }
         if (ta->arg_is_malloced) free(ta->arg);
-        dealloc_stack(w->tasks.arr[t]);
+        if (w->tasks.arr[t]->stack)dealloc_stack(w->tasks.arr[t]);
         w->tasks.arr[t]->stack = NULL;
         free(w->tasks.arr[t]);
     }
+
 
     tcb_state_map[t] = 0; // Free the slot for reuse
     w->tasks.arr[t] = NULL;

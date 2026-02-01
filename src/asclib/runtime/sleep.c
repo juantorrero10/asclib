@@ -9,6 +9,9 @@
 #include <task_mem.h>
 #include <task_control.h>
 #include <collections.h>
+#include <task_mem.h>
+
+extern TLS g_arrlist_t* generation_map;
 
 
 #define ENABLE_GUARD_PAGE 1
@@ -35,7 +38,7 @@ void* __internal_async_sleep(void* __arg) {
     t->status = WAITING;
     t->w_reason = WAIT_TIMER;
 
-    heap_push(w, timers, w->tasks.current);
+    heap_push(w, timers, GET_FULL_HANDLE());
 
     __task_yield_impl();
 
