@@ -44,7 +44,7 @@ typedef struct _Task_Entry_ {
     };                                                              \
                                                                     \
                                                                     \
-    (task__arg__constructor){                                       \
+    (task_entry_t){                                       \
         .fptr = task_function,                                      \
         .value = &__packet,                                         \
         .arg_size = sizeof(__ASCLIB__##task_function##__ARGDECL),   \

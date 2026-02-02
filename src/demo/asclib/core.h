@@ -9,7 +9,7 @@
 
 typedef struct _Task_Ctx_Block worker_t;
 typedef void* task_result_t;
-typedef struct { size_t val; } task_handle_t;
+typedef struct _AL_TH_ { size_t val; } task_handle_t;
 
 struct _ASCLIB_Opaque_ { void* __reserved; }; 
 

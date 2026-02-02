@@ -12,6 +12,7 @@
 #include <task_mem.h>
 #include <log.h>
 #include <ascerr.h>
+#include <collections.h>
 #include <task_stack.h>
 
 
@@ -91,6 +92,11 @@ void worker_destroy(worker_t* w) {
             }
             dealloc_stack(w->tasks.arr[i]);
             
+        }
+        if (w->tasks.arr[i]->cleanup) {
+            // Semi-Automatic cleanup feature
+            __drop_designated_objects(i);
+            gal_dealloc(&(w->tasks.arr[i]->cleanup)); 
         }
         if (w->tasks.arr[i]->tls) {
             _env_call_destructors(w->tasks.arr[i]);

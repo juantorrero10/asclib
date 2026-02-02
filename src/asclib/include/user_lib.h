@@ -4,55 +4,10 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-/* #define __ASCLIB_COUNT_ARGS(...) __ASCLIB_COUNT_ARGS_IMPL(__VA_ARGS__, 8, 7, 6, 5, 4, 3, 2, 1, 0)
-#define __ASCLIB_COUNT_ARGS_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, N, ...) N */
-
-typedef void* task_result_t;
+#include <task_control.h>
+#include <defs/misc.h>
 
 #define TASK_DEFAULT_PAGES 2
-
-/** 
- * @brief Macro for task creation.
- * 
- * Arg passed is an 8-byte array of content
- * Can be a pointer or a value of any format.
- * 
- * Union eliminates UB ensuring correct aligment 
- * and zeroing-out unused bytes for smaller formats like int, short, char
-*/
-#define task_entry(task_function, ...)                              \
-({                                                                  \
-    __ASCLIB__##task_function##__ARGDECL __packet =                 \
-                    (__ASCLIB__##task_function##__ARGDECL){         \
-        ._d = 0,                                                    \
-        __VA_ARGS__                                                 \
-    };                                                              \
-                                                                    \
-                                                                    \
-    (task__arg__constructor){                                       \
-        .fptr = task_function,                                      \
-        .value = &__packet,                                         \
-        .arg_size = sizeof(__ASCLIB__##task_function##__ARGDECL),   \
-        .n_pages = TASK_DEFAULT_PAGES                               \
-    };                                                              \
-})
-
-#define task_entry_ex(task_function, stack_pages, ...)              \
-({                                                                  \
-    __ASCLIB__##task_function##__ARGDECL __packet =                 \
-                    (__ASCLIB__##task_function##__ARGDECL){         \
-        ._d = 0,                                                    \
-        __VA_ARGS__                                                 \
-    };                                                              \
-                                                                    \
-                                                                    \
-    (task__arg__constructor){                                       \
-        .fptr = task_function,                                      \
-        .value = &__packet,                                         \
-        .arg_size = sizeof(__ASCLIB__##task_function##__ARGDECL),   \
-        .n_pages = stack_pages                                      \
-    };                                                              \
-})
 
 // Recover the return value of one of the initial tasks
 #define task_recover_from_worker(result_arr, index, type) *((type*)result_arr[index])
@@ -61,10 +16,12 @@ typedef void* task_result_t;
 
 
 void __task_yield_impl();
-void task_detach();
+void task_detach(task_handle_t t);
 void* __task_alloc_ret_val(size_t s, void* src);
 void* __task_await_impl(task_handle_t th, int expect);
 any_result __task_await_any_impl(task_handle_t* handles, size_t count);
+all_result __task_await_all_impl(task_handle_t* handles, size_t num_task);
+task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t __create_guard_page);
 task_handle_t __task_create(task_entry_t te);
 void __task_drop_impl(task_handle_t th);
 
@@ -86,6 +43,12 @@ void __task_drop_impl(task_handle_t th);
         __ASCLIB__##name##__ARGDECL* __args = (__ASCLIB__##name##__ARGDECL*)__arg;        \
         (void)__args;
 
+// Async declaration compatible for "redefinitions"
+#define async_(name, ...)                                \
+    void* name(void* __arg) {                           \
+        __ASCLIB__##name##__ARGDECL* __args = (__ASCLIB__##name##__ARGDECL*)__arg;        \
+        (void)__args;
+
     
 #define arg(name) (__args->name)
 
@@ -98,6 +61,18 @@ void __task_drop_impl(task_handle_t th);
 /**
  * @brief Return a value from a task.
  */
+#define end_return(type, var) \
+    do { \
+        type __temp = var; \
+        return __task_alloc_ret_val(sizeof(type), &__temp); \
+    } while(0); }
+
+// Return nothing
+#define end_return_void() return NULL; }
+
+/**
+ * @brief Return a value from a task.
+ */
 #define task_return(type, var) \
     do { \
         type __temp = var; \
@@ -105,7 +80,7 @@ void __task_drop_impl(task_handle_t th);
     } while(0);
 
 // Return nothing
-#define task_return_void() return NULL; }
+#define task_return_void() return NULL;
 
 
 
@@ -141,6 +116,12 @@ void __task_drop_impl(task_handle_t th);
     __task_await_any_impl(_group, __ASCLIB_COUNT_ARGS(__VA_ARGS__)); \
 })
 
+#define await_all(...) ({ \
+    task_handle_t _group[] = { __VA_ARGS__ }; \
+    __task_await_all_impl(_group, __ASCLIB_COUNT_ARGS(__VA_ARGS__)); \
+})
+
+
 #define any_ret(type, result) ({\
     void* __ptr = result.winner_return;\
     type __val = *(type*)__ptr; free(__ptr); \
@@ -157,6 +138,13 @@ void __task_drop_impl(task_handle_t th);
     *_a = (__ASCLIB__##name##__ARGDECL){ __VA_ARGS__ }; \
     task__arg__constructor _te = { .fptr = name, .value = _a, .arg_size = sizeof(__ASCLIB__##name##__ARGDECL), .n_pages = TASK_DEFAULT_PAGES , .arg_malloced = 1}; \
     __task_create(_te); \
+})
+
+#define task_spawn_ex(name,stack_bytes, guardpage, ...) ({ \
+    __ASCLIB__##name##__ARGDECL* _a = malloc(sizeof(__ASCLIB__##name##__ARGDECL)); \
+    *_a = (__ASCLIB__##name##__ARGDECL){ __VA_ARGS__ }; \
+    task_entry_t _te = { .fptr = name, .value = _a, .arg_size = sizeof(__ASCLIB__##name##__ARGDECL), .n_pages = 0 , .arg_malloced = 1}; \
+    __task_create_ex(_te, stack_bytes, guardpage); \
 })
 /**
  * @brief Extended task_new macro
@@ -179,19 +167,7 @@ void __task_drop_impl(task_handle_t th);
  * Detaching also makes a task cleaup itself and guarantes to the runtime that it would not leak.
  * Return value of detached tasks get lost. 
  */
-#define detach do { task_detach(); } while(0);
-
-#define drop_task(handle) __task_drop_impl(handle)
-#define drop __task_drop_impl((size_t)-1)
-
-
-
-// WORKER FUNCTION
-worker_t* worker_create(size_t running, ...);
-void worker_destroy(worker_t* worker);
-void worker_run(worker_t* w);
-task_result_t* worker_await_all(worker_t* w);
-task_result_t* worker_await(worker_t* w);
+#define detach do { task_detach((task_handle_t){ -1 }); } while(0);
 
 
 #endif // WORKER_H_

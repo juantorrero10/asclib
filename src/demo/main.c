@@ -1,52 +1,64 @@
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
 
 #include "asclib/core.h"
+#include "asclib/io.h"
+#include "asclib/net.h"
+#include "asclib/cleanup.h"
 #include "asclib/env.h"
-#include "asclib/sync.h"
+
+#define PORT 9999
 
 
-ENV_DECLARE(int, KEY);
-ENV_DECLARE_DYN(char, BUFF, free);
+async(handle_client, int client_fd) {
+    detach; // Run in background
+    int client_fd = arg(client_fd); clean_on_drop(client_fd); // Auto-close
 
-
-async(counter) {
-    detach;
-    for (size_t i = 0; i < 13; i++)
-    {
-        printf("i = %zu\n", i);
-        await(asc_sleep(100));
+    char buf[1024];
+    char* msg = "Hello from C!\n\0";
+    while (1) {
+        // We'll build asc_read next
+        ssize_t n = await_ret(ssize_t, asc_read(client_fd, buf, sizeof(buf)));
+        if (n <= 0) break;
+        printf("[+]: New connection -> FD:%d\n", client_fd);
+        
+        await(asc_write(client_fd, msg, strlen(msg)));
+        printf("[-]: Closed connection\n");
     }
     end_return_void();
 }
 
-async(task) {
-    
-    printf("MY handle: %lx\n", (uint64_t)ENVGET_SELF().val);
-
-    task_spawn(counter);
-    await(asc_sleep(1000));
-
+async(timeout, task_handle_t th) {
+    detach;
+    await(asc_sleep(5000));
+    drop_task(arg(th));
     end_return_void();
 }
 
-async(main_task) 
-{
-    ENVSET_BUFF(malloc(1024));
-    strcpy(ENVGET_BUFF(), "Another string.");
+async(main_server) {
+    task_spawn(timeout, .th = ENVGET_SELF());
+    tcp_listerner_t* listener = clean_on_drop(asc_tcp_bind((uint8_t[]){127, 0, 0, 1}, PORT));
+    if (!listener) {
+        printf("Failed to bind -> %s!\n", strerror(errno));
+        task_return_void();
+    }
 
-    printf("[MAIN]: buffer before -> %s\n", ENVGET_BUFF());
-    
-    await(task_spawn(task));
-    
-    printf("[MAIN]: buffer after -> %s\n", ENVGET_BUFF());
-    
+    printf("Listening on port %hu...\n", PORT);
+
+    while (1) {
+        int client_fd = await_ret(int, asc_tcp_accept(listener));
+        if (client_fd >= 0) {
+            task_spawn(handle_client, .client_fd = client_fd);
+        }
+    }
     end_return_void();
 }
+
 
 int main() {
 
-    worker_t* w = worker_create(1, task_entry(main_task));
+    worker_t* w = worker_create(1, task_entry(main_server));
     worker_run(w);
     worker_await_all(w);
     worker_destroy(w);

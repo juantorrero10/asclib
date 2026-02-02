@@ -7,6 +7,7 @@
 
 #include "sync.h"
 #include <unistd.h>
+#include <stdio.h>
 
 typedef struct {
     void(*drop_)(void*);
@@ -20,9 +21,21 @@ void __oneshot_forcedrop_tx(oneshot_tx_t tx);
 
 // Deallocators
 static inline void __drop_pointer(void* p) {if (p) free(p); }
-static inline void __drop_fd(int* fd) { if (*fd >= 0) close(*fd); }
-static inline void __drop_oneshot_tx(oneshot_tx_t tx) { if (tx) oneshot_drop_tx(tx); }
-static inline void __drop_oneshot_rx(oneshot_rx_t rx) { if (rx) oneshot_drop_rx(rx); }
+static inline void __drop_tcplistener(void* p) {
+    if (!p) return;
+    printf("aaaa\n");
+    tcp_listerner_t* l = (tcp_listerner_t*)p;
+    if (l->fd >= 0) close(l->fd);
+    free(l);
+}
+static inline void __drop_diagnostic(void* p) {
+    printf("[CLEANUP ERROR]: _Generic failed to match type! Falling back to default free for %p\n", p);
+    if (p) free(p);
+}
+
+static inline void __drop_fd(void* fd) { if ((int)(uintptr_t)fd >= 0) close((int)(uintptr_t)fd);}
+static inline void __drop_oneshot_tx(oneshot_tx_t tx) { if (tx) __oneshot_forcedrop_tx(tx); }
+static inline void __drop_oneshot_rx(oneshot_rx_t rx) { if (rx) __oneshot_forcedrop_rx(rx); }
 static inline void __drop_mpsc_tx(mpsc_tx_t tx) { if (tx) mpsc_drop_tx(tx); }
 static inline void __drop_mpsc_rx(mpsc_rx_t rx) { if (rx) __mpsc_forcedrop_rx(rx); }
 
@@ -34,6 +47,7 @@ void __drop_cleanup_register(object_drop_autocleanup_t oda);
     int: (void(*)(void*))__drop_fd,               \
     oneshot_tx_t: (void(*)(void*))__drop_oneshot_tx, \
     oneshot_rx_t: (void(*)(void*))__drop_oneshot_rx, \
+    struct _ASCLIB_TCP_Listener_*: __drop_tcplistener, \
     mpsc_tx_t: (void(*)(void*))__drop_mpsc_tx,       \
     mpsc_rx_t: (void(*)(void*))__drop_mpsc_rx,       \
     default: (void(*)(void*))__drop_pointer          \
