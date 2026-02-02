@@ -100,67 +100,58 @@ size_t hm_get_v(uu_hash_map* hm, size_t k) {
 
 // =========================== TIMER HEAP (specific) ==============================================0
 
-heap_t* heap_alloc(size_t initial_capacity) {
-    heap_t* ret = malloc(sizeof(heap_t));
-    ret->data = malloc(initial_capacity * sizeof(uint64_t));
+timer_heap_t* heap_alloc(size_t initial_capacity) {
+    timer_heap_t* ret = malloc(sizeof(timer_heap_t));
+    ret->data = malloc(initial_capacity * sizeof(timeout_t));
     ret->capacity = initial_capacity;
     ret->size = 0;
     return ret;
 }
 
-void heap_dealloc(heap_t** h) {
+void heap_dealloc(timer_heap_t** h) {
     free((*h)->data);
     free((*h));
     *h = NULL;
 }
 
-static uint64_t get_ts(worker_t* w, size_t task) {
-    // Safety check: Virtual tasks (NULL) or empty slots
-    if (task >= w->tasks.capacity || !TCB_AT(task)) {
-        // Return "Infinity" so these invalid nodes sink to the bottom of the Min-Heap
-        return (uint64_t)-1; 
-    }
-    return w->tasks.arr[task]->wait_for.timestamp;
-}
-
-uint64_t heap_peek(worker_t* w, heap_t* hp) {
-    uint64_t ret = hp->data[0];
-    if (hp->size == 0) return (uint64_t)-1;
-
-    uint64_t last_h = hp->data[--hp->size];
+timeout_t heap_pop(timer_heap_t* hp) {
+    timeout_t root = hp->data[0];
+    timeout_t last = hp->data[--hp->size];
+    
     size_t i = 0;
-
-    // Shift Down
     while (i * 2 + 1 < hp->size) {
         size_t child = i * 2 + 1;
-        if (child + 1 < hp->size && get_ts(w, hp->data[child + 1]) < get_ts(w, hp->data[child])) {
+        // Find the smaller child
+        if (child + 1 < hp->size && hp->data[child + 1].timeout < hp->data[child].timeout) {
             child++;
         }
-        if (get_ts(w, last_h) <= get_ts(w, hp->data[child])) break;
+        
+        if (last.timeout <= hp->data[child].timeout) break;
+        
         hp->data[i] = hp->data[child];
         i = child;
     }
-    hp->data[i] = last_h;
-
-    return ret;
+    hp->data[i] = last;
+    return root;
 }
 
-void heap_push(worker_t* w, heap_t* hp, size_t task) {
-
+void heap_push(timer_heap_t* hp, size_t task_id, uint64_t timeout) {
     if (hp->size >= hp->capacity) {
-        hp->data = realloc(hp->data, sizeof(uint64_t) * 2 * hp->capacity);
-        hp->capacity *= 2;
+        hp->capacity = (hp->capacity == 0) ? 4 : hp->capacity * 2;
+        hp->data = realloc(hp->data, sizeof(timeout_t) * hp->capacity);
     }
 
-    //Shift down
     size_t i = hp->size++;
     while (i > 0) {
         size_t p = (i - 1) / 2;
-        if (get_ts(w, hp->data[p]) <= get_ts(w, task)) break;
+        // Compare against the timeout stored in the heap, not the TCB
+        if (hp->data[p].timeout <= timeout) break;
+        
         hp->data[i] = hp->data[p];
         i = p;
     }
-    hp->data[i] = task;
+    hp->data[i].th = task_id;
+    hp->data[i].timeout = timeout;
 }
 
 // -------------------------- u64 arrlist (general) ------------------------------------

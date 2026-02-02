@@ -8,9 +8,10 @@
 #include <signal.h>
 #include <sys/epoll.h>
 
-//#define __DEBUG
+#define __DEBUG
 //#define __DEBUG_STATES
 //#define __DEBUG_OCCMAP
+//#define __DEBUG_TIMERS
 //#define __DEBUG_CTX
 
 #include <dispatcher.h>
@@ -24,7 +25,7 @@
 
 // Managed by sleep.c
 #define TIMERS_INITIAL_CAP 16
-extern TLS heap_t* timers;
+extern TLS timer_heap_t* timers;
 
 // Managed by task_control.c
 extern TLS uu_hash_map* hmawait;
@@ -97,20 +98,28 @@ static void lazy_wait(worker_t* w) {
 
     // Erase invalid entries
     while (timers->size > 0) {
-        // Looking-ahead, we don't want to modify a valid entry
-        top = timers->data[0];
+        top = timers->data[0].th; // Looking-ahead, we don't want to modify a valid entry
         size_t idx = LOWER_32(top);
         if (!TCB_AT(idx) || STATUS_OF(idx) == FINISHED || W_REASON(idx) != WAIT_TIMER || IS_STALE(top)) {
-            heap_peek(w, timers);
+            heap_pop(timers);
             continue;
         }
         break;
     }
 
+    #ifdef __DEBUG_TIMERS
+    for (size_t i = 0; i < timers->size; i++)
+    {
+        if (TCB_AT(LOWER_32(timers->data[i].th)))
+            OKAY("T[%zu]: %lx (%lu ms)", i, timers->data[i].th, timers->data[i].timeout - now);
+        else
+            WARN("T[%zu]: %lx", i, timers->data[i].th);
+    }
+    #endif
+
 
     if (timers->size > 0) {
-        size_t top_h = LOWER_32(timers->data[0]);
-        uint64_t next_timer = w->tasks.arr[top_h]->wait_for.timestamp;
+        uint64_t next_timer = timers->data[0].timeout;
 
         if (next_timer <= now) {
             timeout_ms = 0; // Already expired
@@ -202,6 +211,7 @@ void* dispatcher(void* arg) {
                 t = w->tasks.arr[idx];
                 w->tasks.current = idx;
                 found = 1;
+                //break;
             }
         }
         #ifdef __DEBUG_STATES

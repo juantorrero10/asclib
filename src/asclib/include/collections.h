@@ -21,10 +21,15 @@ typedef struct {
 } uu_hash_map;
 
 typedef struct {
-    uint64_t* data;
+    task_handle_t th;
+    uint64_t timeout;
+} timeout_t;
+
+typedef struct {
+    timeout_t* data;
     size_t size;
     size_t capacity;
-} heap_t;
+} timer_heap_t;
 
 typedef struct {
     uint64_t* data;
@@ -46,10 +51,10 @@ int hm_remove_entry(uu_hash_map* hm, size_t fd);
 size_t hm_get_v(uu_hash_map* hm, size_t k);
 
 
-heap_t* heap_alloc(size_t initial_capacity);
-void heap_dealloc(heap_t** h);
-uint64_t heap_peek(worker_t* w, heap_t* hp);
-void heap_push(worker_t* w, heap_t* hp, size_t task);
+timer_heap_t* heap_alloc(size_t initial_capacity);
+void heap_dealloc(timer_heap_t** h);
+void heap_push(timer_heap_t* hp, size_t task_id, uint64_t timeout);
+timeout_t heap_pop(timer_heap_t* hp);
 
 u64_arrlist_t* u64al_alloc(size_t initial_capacity);
 void u64al_dealloc(u64_arrlist_t** arr);

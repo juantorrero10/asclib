@@ -3,15 +3,30 @@
 
 #include "asclib/core.h"
 #include "asclib/env.h"
+#include "asclib/sync.h"
 
 
 ENV_DECLARE(int, KEY);
 ENV_DECLARE_DYN(char, BUFF, free);
 
 
+async(counter) {
+    detach;
+    for (size_t i = 0; i < 13; i++)
+    {
+        printf("i = %zu\n", i);
+        await(asc_sleep(100));
+    }
+    end_return_void();
+}
+
 async(task) {
     
     printf("MY handle: %lx\n", (uint64_t)ENVGET_SELF().val);
+
+    task_spawn(counter);
+    await(asc_sleep(1000));
+
     end_return_void();
 }
 
@@ -33,7 +48,7 @@ int main() {
 
     worker_t* w = worker_create(1, task_entry(main_task));
     worker_run(w);
-    worker_await(w);
+    worker_await_all(w);
     worker_destroy(w);
 
     // NO MEM LEAKS!!

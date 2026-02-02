@@ -243,7 +243,7 @@ void __task_drop_impl(task_handle_t th);
  * Detaching also makes a task cleaup itself and guarantes to the runtime that it would not leak.
  * Return value of detached tasks get lost. 
  */
-#define detach do { task_detach((size_t)-1); } while(0);
+#define detach do { task_detach((task_handle_t){ -1 }); } while(0);
 
 
 // WORKER FUNCTION

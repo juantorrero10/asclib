@@ -16,7 +16,7 @@ extern TLS g_arrlist_t* generation_map;
 
 #define ENABLE_GUARD_PAGE 1
 
-TLS heap_t* timers = NULL;
+TLS timer_heap_t* timers = NULL;
 
 uint64_t get_time_ms() {
     struct timespec ts;
@@ -38,7 +38,7 @@ void* __internal_async_sleep(void* __arg) {
     t->status = WAITING;
     t->w_reason = WAIT_TIMER;
 
-    heap_push(w, timers, GET_FULL_HANDLE());
+    heap_push(timers, GET_FULL_HANDLE(), t->wait_for.timestamp);
 
     __task_yield_impl();
 
