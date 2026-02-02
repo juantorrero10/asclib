@@ -3,6 +3,12 @@
 
 #include "core.h"
 
+typedef enum {
+    ST_CHAN_READY,    // Channel is open and empty
+    ST_CHAN_CLOSED,   // NULL pointer or properly closed
+    ST_CHAN_USED,     // Payload was already sent
+} chan_status_t;
+
 typedef struct _ASCLIB_One_Shot_Channel oneshot_t;
 typedef struct _ASCLIB_spsc_Channel spsc_t;
 
@@ -44,8 +50,7 @@ oneshot_tx_t oneshot_take_tx(oneshot_tx_ref_t ref);
 void oneshot_assert_closed(oneshot_pair_t pair);
 void oneshot_drop_rx(oneshot_rx_t tx);
 void oneshot_drop_tx(oneshot_tx_t tx);
-
-void oneshot_free(oneshot_pair_t* p);
+chan_status_t oneshot_status(void* any_end);
 
 
 // ERROR

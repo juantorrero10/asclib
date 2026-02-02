@@ -8,7 +8,7 @@
 #include <signal.h>
 #include <sys/epoll.h>
 
-#define __DEBUG
+//#define __DEBUG
 //#define __DEBUG_STATES
 //#define __DEBUG_OCCMAP
 //#define __DEBUG_TIMERS

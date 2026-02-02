@@ -56,6 +56,13 @@ struct _ORECV_arg {
     task_handle_t caller;
 };
 
+typedef enum {
+    ST_CHAN_READY,    // Channel is open and empty
+    ST_CHAN_CLOSED,   // The other end was dropped/closed
+    ST_CHAN_USED,     // Payload was already sent
+} chan_status_t;
+
+
 static chan_err_t check_some_errors(oneshot_t* ch, void* ptr, int tx_rx, task_handle_t caller);
 
 
@@ -175,11 +182,25 @@ static chan_err_t check_some_errors(oneshot_t* ch, void* ptr, int tx_rx, task_ha
     return 0;
 }
 
+chan_status_t oneshot_status(void* any_end) {
+    if (!any_end) return ST_CHAN_CLOSED;
+
+    oneshot_t* chan = any_end;
+    if (chan->rx_owner == (size_t)-1 || chan->tx_owner == (size_t)-1) 
+        return ST_CHAN_CLOSED;
+
+    if (chan->sent == 1 || chan->tx_alive == 0)
+        return ST_CHAN_USED;
+
+    return ST_CHAN_READY;
+}
+
 
 oneshot_rx_ref_t oneshot_move_rx(oneshot_pair_t rx) {
     oneshot_t* chan = (oneshot_t*)rx;
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "CHANNELS::oneshot_move_rx()");
+    if (chan->rx_owner == (size_t)-2) return (oneshot_rx_ref_t)chan;
     ASSERT_OWNER(chan, 1, "CHANNELS::oneshot_move_rx()");
     chan->rx_owner = -2;
     return(oneshot_rx_ref_t)chan;

@@ -95,7 +95,7 @@ void worker_destroy(worker_t* w) {
         }
         if (w->tasks.arr[i]->cleanup) {
             // Semi-Automatic cleanup feature
-            __drop_designated_objects(i);
+            __drop_designated_objects(i, w);
             gal_dealloc(&(w->tasks.arr[i]->cleanup)); 
         }
         if (w->tasks.arr[i]->tls) {

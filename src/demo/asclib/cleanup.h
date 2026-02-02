@@ -23,14 +23,9 @@ void __oneshot_forcedrop_tx(oneshot_tx_t tx);
 static inline void __drop_pointer(void* p) {if (p) free(p); }
 static inline void __drop_tcplistener(void* p) {
     if (!p) return;
-    printf("aaaa\n");
     tcp_listerner_t* l = (tcp_listerner_t*)p;
     if (l->fd >= 0) close(l->fd);
     free(l);
-}
-static inline void __drop_diagnostic(void* p) {
-    printf("[CLEANUP ERROR]: _Generic failed to match type! Falling back to default free for %p\n", p);
-    if (p) free(p);
 }
 
 static inline void __drop_fd(void* fd) { if ((int)(uintptr_t)fd >= 0) close((int)(uintptr_t)fd);}

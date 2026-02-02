@@ -178,7 +178,7 @@ void __task_destroy(task_handle_t t) {
         ta->w_reason = WAIT_NONE;
         if (ta->cleanup) {
             // Semi-Automatic cleanup feature
-            __drop_designated_objects(t);
+            __drop_designated_objects(t, w);
             gal_dealloc(&ta->cleanup); 
         }
         if (ta->tls) {

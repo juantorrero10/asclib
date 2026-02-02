@@ -37,12 +37,11 @@ void __drop_cleanup_register(object_drop_autocleanup_t oda) {
 
 }
 
-void __drop_designated_objects(task_handle_t th) {
-    worker_t* w = tl_worker;
+void __drop_designated_objects(task_handle_t th, worker_t* w) {
 
     th = LOWER_32(th);
 
-    if (!TCB_AT(th)) {
+    if ((tl_worker && !TCB_AT(th)) || (!tl_worker && th >= w->tasks.initial)) {
         return;
     }
 

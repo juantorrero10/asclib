@@ -15,7 +15,7 @@ void __free_taskmem_objs();
 uint8_t _get_tcbstate_at(size_t id);
 void _set_tcbstate_at(size_t id, uint8_t val);
 void __io_free_hashmap();
-void __drop_designated_objects(task_handle_t th);
+void __drop_designated_objects(task_handle_t th, worker_t* w);
 void _env_call_destructors(TCB* t);
 
 #endif // TASK_MEM_H_
