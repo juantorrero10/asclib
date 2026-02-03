@@ -237,13 +237,17 @@ void __task_drop_impl(task_handle_t th);
     task__arg__constructor _te = { .fptr = name, .value = _a, .arg_size = sizeof(__ASCLIB__##name##__ARGDECL), .n_pages = TASK_DEFAULT_PAGES , .arg_malloced = 1}; \
     __task_create(_te); \
 })
+
 /**
- * @brief Extended task_new macro
- * @param n_pages N of memory pages (normally 4Kb) allocated as a stack.
+ * @brief Spawn a task using its name and argument values.
+ * Uses designated initializers to ensure type safety.
+ * Usage: task_spawn(my_func, .x = 10, .y = "hello");
  */
-#define task_new_ex(fptr, arg_type, value, n_pages) ({\
-    task_handle_t __val = __task_create(task_entry_ex(fptr, arg_type, value, n_pages)); \
-    __val; \
+#define task_spawn_ex(name, stack_pages, ...) ({ \
+    __ASCLIB__##name##__ARGDECL* _a = malloc(sizeof(__ASCLIB__##name##__ARGDECL)); \
+    *_a = (__ASCLIB__##name##__ARGDECL){ __VA_ARGS__ }; \
+    task__arg__constructor _te = { .fptr = name, .value = _a, .arg_size = sizeof(__ASCLIB__##name##__ARGDECL), .n_pages = stack_pages , .arg_malloced = 1}; \
+    __task_create(_te); \
 })
 
 /**

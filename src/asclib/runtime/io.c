@@ -6,9 +6,12 @@
 #include <string.h>
 #include <netinet/in.h>
 #include <signal.h>
+#include <sys/sendfile.h>
+
 
 //#define __DEBUG
 
+#include <user_lib.h>
 #include <defs.h>
 #include <task_control.h>
 #include <task_mem.h>
@@ -26,18 +29,15 @@ TLS uu_hash_map* fdh = NULL;
 static void set_nonblock(int fd);
 static void set_block(int fd);
 
+extern TLS g_arrlist_t* generation_map;
 
-#define task_return(var, type) \
-    do { \
-        type __temp = var; \
-        return __task_alloc_ret_val(sizeof(type), &__temp); \
-    } while(0)
 
 struct _Async_Read_Params{
     int fd;
     void* buff;
     size_t n;
     int toggle_blocking;
+    int read_or_recv;
 };
 
 struct _Async_Write_Params {
@@ -55,19 +55,22 @@ static void* __internal_read(void* __arg) {
     void* buff = ap->buff;
     size_t sz = ap->n;
     int r = ap->toggle_blocking; (void)r;
+    int o = ap->read_or_recv;
 
     free(ap);
 
-    claim_fd(fd, w->tasks.current);
+    claim_fd(fd, GET_FULL_HANDLE());
     if(r) set_nonblock(fd);
 
     
     for (;;) {
-        ssize_t n = read(fd, buff, sz);
+        ssize_t n = (o)
+            ? recv(fd, buff, sz, MSG_DONTWAIT)
+            : read(fd, buff, sz);
         if (n >= 0)  {
             release_fd(fd); 
             if (r)set_block(fd); 
-            task_return(n, ssize_t); 
+            task_return(ssize_t, n); 
         }
 
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -76,7 +79,7 @@ static void* __internal_read(void* __arg) {
         }
         release_fd(fd);
         if (r) set_block(fd);
-        task_return(-1, ssize_t);
+        task_return(ssize_t, -1);
     }
 }
 
@@ -106,7 +109,7 @@ static void* __internal_write(void* __arg) {
             if (written_so_far >= total_to_write) {
                 release_fd(fd);
                 if (r) set_block(fd);
-                task_return(written_so_far, ssize_t);
+                task_return(ssize_t, written_so_far);
             }   
             //Partials write -> yield
             __task_wait_on_fd(fd, EPOLLOUT);
@@ -121,7 +124,7 @@ static void* __internal_write(void* __arg) {
             // Erorr
             if (r) set_block(fd);
             release_fd(fd);
-            task_return(-1, ssize_t);
+            task_return(ssize_t, -1);
         }
 
     }
@@ -188,6 +191,27 @@ task_handle_t asc_read(int fd, void* buff, size_t __n) {
     ap->buff = buff;
     ap->n = __n;
     ap->toggle_blocking = (fd == 0);
+    ap->read_or_recv = 0;
+
+    task_entry_t te = {
+        .fptr = __internal_read,
+        .value = ap,
+        .arg_size = sizeof(void*),
+        .n_pages = 0,
+    };
+
+    return __task_create_ex(
+        te, 4096, ENABLE_GUARD_PAGE);
+}
+
+task_handle_t asc_recv(int fd, void* buff, size_t __n) {
+    struct _Async_Read_Params* ap = malloc(sizeof(struct _Async_Read_Params));
+
+    ap->fd = fd;
+    ap->buff = buff;
+    ap->n = __n;
+    ap->toggle_blocking = (fd == 0);
+    ap->read_or_recv = 1;
 
     task_entry_t te = {
         .fptr = __internal_read,
@@ -239,5 +263,47 @@ static void set_block(int fd) {
     if ((flags & O_NONBLOCK)) {
         fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
     }
+}
+
+async(__internal_sendfile, int out_fd; int in_fd; size_t total_size) {
+    size_t total_size = arg(total_size);
+    int in_fd = arg(in_fd);
+    int out_fd = arg(out_fd);
+    off_t current_offset = 0;
+    worker_t* w = tl_worker;
+    claim_fd(out_fd, GET_FULL_HANDLE());
+    // Assuming out_fd (socket) is already non-blocking from the accept_loop
+
+    for (;;) {
+        // IMPORTANT: sendfile updates current_offset internally!
+        // We ask to send (Total - current_offset) bytes.
+        ssize_t n = sendfile(out_fd, in_fd, &current_offset, total_size - (size_t)current_offset);
+
+        if (n >= 0) {
+            // Success! current_offset was updated by the kernel.
+            if ((size_t)current_offset >= total_size) {
+                release_fd(out_fd);
+                task_return(ssize_t, (ssize_t)current_offset);
+            }
+            
+            // Partial write: wait for socket buffer space
+            __task_wait_on_fd(out_fd, EPOLLOUT);
+            continue;
+        }
+
+        if (n == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                __task_wait_on_fd(out_fd, EPOLLOUT);
+                continue;
+            }
+            // Real Error
+            release_fd(out_fd);
+            task_return(ssize_t, -1);
+        }
+    }
+    end_return_void();
+}
+task_handle_t asc_sendfile(int out_fd, int in_fd, size_t total_size) {
+    return task_spawn_ex(__internal_sendfile, 1024, 1, .out_fd = out_fd, .in_fd = in_fd, .total_size = total_size);
 }
 

@@ -1,6 +1,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <sys/stat.h>
+
 
 #include "asclib/core.h"
 #include "asclib/io.h"
@@ -26,8 +28,21 @@ async(handle_client, int client_fd; oneshot_tx_ref_t shutdown_ref) {
             { break; }
         );
 
-        if (n <= 0)
-            break;
+        if (n >= 4 && memcmp(buf, "file", 4) == 0) {
+            int file_fd = asc_open("index.html", O_RDONLY, 0);
+            if (file_fd < 0) {
+                await(asc_write(fd, "Internal server error", 21));
+            } else {
+                struct stat st;
+                fstat(file_fd, &st);
+                printf("[FILE]: Sending %ld bytes via sendfile...\n", st.st_size);
+                
+                // Zero-copy transfer
+                await(asc_sendfile(fd, file_fd, st.st_size));
+                close(file_fd);
+            }
+            continue; 
+        }
 
         // Check for the "exit" command from Python
         if (n >= 4 && memcmp(buf, "exit", 4) == 0) {
@@ -53,7 +68,7 @@ async(accept_loop, tcp_listerner_t* listener; oneshot_tx_ref_t shutdown_ref) {
         if (client_fd >= 0) {
             // We pass the REF (the neutral state) to the client
             // No need to take it here, we let the client 'take' it if they need to exit
-            task_spawn(handle_client, 
+            task_spawn(handle_client,
                 .client_fd = client_fd, 
                 .shutdown_ref = arg(shutdown_ref)
             );
