@@ -25,8 +25,10 @@ typedef struct _Task_Entry_ {
 typedef struct _Await_Any_Result {
     void* winner_return;
     task_handle_t winner;
+    size_t winner_idx;
     task_handle_t* losers;
     size_t num_losers;
+    int some;
 
     /** @attention Unsafe method!!!!.
      * This methods is only guaranteed to work if called inmidiately after await_any()
@@ -34,6 +36,8 @@ typedef struct _Await_Any_Result {
      * Dropping implies that alloced heap memory gets leaked if its not freed before dropping.
      */ 
     void* (*select)(void);
+    // Same as select but we keep the any_result
+    struct _Await_Any_Result (*cut_losers)(void);
 } any_result;
 
 typedef struct _Await_All_Result {
@@ -203,6 +207,17 @@ void __task_drop_impl(task_handle_t th);
     task_handle_t _group[] = { __VA_ARGS__ }; \
     __task_await_all_impl(_group, __ASCLIB_COUNT_ARGS(__VA_ARGS__)); \
 })
+
+#define any_unwrap_or(type, res, fallback)        \
+    ({                                            \
+        any_result _r = (res);                \
+        if (!_r.some) {                           \
+            fallback;                      \
+        }                                         \
+        type _val = *(type*)_r.winner_return;     \
+        free(_r.winner_return);                   \
+        _val;                                     \
+    })
 
 
 #define any_ret(type, result) ({\

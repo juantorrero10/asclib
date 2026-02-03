@@ -151,7 +151,7 @@ void* dispatcher(void* arg) {
     assert(w->returned_array);
     
 
-    //set_sigsegv_handler();
+    set_sigsegv_handler();
     hmawait = NULL;
     
     TCB* t = NULL;
@@ -300,7 +300,7 @@ void* dispatcher(void* arg) {
     __free_taskmem_objs();
     __io_free_hashmap();
     __hm_await_free();
-    heap_dealloc(&timers);    
+    heap_dealloc(&timers);
 
     return NULL;
 } 

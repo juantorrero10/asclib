@@ -51,6 +51,7 @@ void oneshot_assert_closed(oneshot_pair_t pair);
 void oneshot_drop_rx(oneshot_rx_t tx);
 void oneshot_drop_tx(oneshot_tx_t tx);
 chan_status_t oneshot_status(void* any_end);
+task_handle_t oneshot_wait_change(void* any_end);
 
 
 // ERROR

@@ -93,7 +93,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
 
     // if we dont find a free spot realloc the array;
     size_t new_id = (size_t)-1;
-    for (int i = 0; i < (int)w->tasks.capacity; i++)
+    for (int i = w->tasks.initial; i < (int)w->tasks.capacity; i++)
         if (tcb_state_map[i] == 0) { new_id = (size_t)i; break; }
 
     if ((w->tasks.running >= w->tasks.capacity) && new_id == (size_t)-1) {
@@ -178,6 +178,7 @@ void __task_destroy(task_handle_t t) {
         ta->w_reason = WAIT_NONE;
         if (ta->cleanup) {
             // Semi-Automatic cleanup feature
+            
             __drop_designated_objects(t, w);
             gal_dealloc(&ta->cleanup); 
         }

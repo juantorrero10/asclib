@@ -64,6 +64,7 @@ typedef enum {
 
 
 static chan_err_t check_some_errors(oneshot_t* ch, void* ptr, int tx_rx, task_handle_t caller);
+static void notify_waiters(oneshot_t* chan);
 
 
 static void* __internal_oneshot_recv(void* __arg) {
@@ -90,6 +91,7 @@ static void* __internal_oneshot_recv(void* __arg) {
 
     memcpy(buffer, chan->payload, chan->payload_sz);
     chan->rx_waiter = -1;
+    notify_waiters(chan);
 
 
     task_return(chan_err_t, CHAN_OK);
@@ -142,6 +144,7 @@ static void oneshot_free(oneshot_pair_t* p) {
     if (!(*p)) return;
     oneshot_t** c = (oneshot_t**)p;
     free((*c)->payload);
+    u64al_dealloc(&((*c)->action_waiters));
     free((*c));
     *c = NULL;
 }
@@ -246,6 +249,8 @@ void __oneshot_forcedrop_tx(oneshot_tx_t tx) {
         chan->rx_waiter = -1;
     }
 
+    notify_waiters(chan);
+
     chan->tx_alive = 0;
     if (chan->rx_owner == (size_t)-1) {
         switch (chan->magic)
@@ -295,6 +300,8 @@ void __oneshot_forcedrop_rx(oneshot_rx_t rx) {
             break;
         }
     }
+
+    notify_waiters(chan);
 }
 
 void oneshot_drop_rx(oneshot_rx_t rx) {
@@ -367,6 +374,51 @@ task_handle_t asc_oneshot_send(oneshot_tx_t tx, void* payload) {
         4096,
         1
     );
+}
+
+static void notify_waiters(oneshot_t* chan) {
+    if (!chan || !chan->action_waiters) return;
+    worker_t* w = tl_worker;
+    
+
+    while(chan->action_waiters->size > 0) {
+        task_handle_t th = u64al_pop(chan->action_waiters, 0);
+        TCB* t = w->tasks.arr[LOWER_32(th)];
+        if (TCB_AT(LOWER_32(th)) && !IS_STALE(th) && t->status == WAITING && t->w_reason == WAIT_CHANNEL) {
+            t->status = READY;
+        }
+    }
+}
+
+
+async(__internal_wait_change, void* any_end) {
+
+    oneshot_t* chan = (oneshot_t*)arg(any_end);
+    if (!chan) {
+        asc_chan_error(CHAN_ERROR_NULL_PTR, "CHANNELS::oneshot_wait_change()", (any_t)0, (any_t)0, (any_t)0); 
+        task_return_void(); 
+    }
+
+    worker_t* w = tl_worker;
+    TCB* t = w->tasks.arr[w->tasks.current];
+
+    if (!chan->action_waiters) {
+        chan->action_waiters = u64al_alloc(2);
+    }
+
+    t->status = WAITING;
+    t->w_reason = WAIT_CHANNEL;
+    u64al_append(chan->action_waiters, (uint64_t)GET_FULL_HANDLE());
+    yield;
+
+    end_return_void();
+}
+
+task_handle_t oneshot_wait_change(void* any_end) {
+    worker_t* w = tl_worker;
+    ASSERT_CONTEXT(w, "CHANNELS::oneshot_wait_change()");
+
+    return task_spawn_ex(__internal_wait_change, 1024, 1, .any_end = any_end);
 }
 
 

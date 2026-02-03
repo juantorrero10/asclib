@@ -18,6 +18,7 @@
 TLS any_result* last_any_result = NULL;
 TLS all_result* last_all_result = NULL;
 
+
 // Redundant but more efficient structure to store await dependencies.
 #define HM_INITIAL_CAPACITY 4
 TLS uu_hash_map* hmawait = NULL;
@@ -27,6 +28,7 @@ extern TLS g_arrlist_t* generation_map;
 
 
 static void* __any_result_select_method();
+static any_result __any_result_cutloser_method();
 static void* __all_result_get_method();
 static void __all_result_none_method();
 
@@ -202,6 +204,7 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
 
     any_result ret = { 0 };
     ret.select = __any_result_select_method;
+    ret.cut_losers = __any_result_cutloser_method;
     ret.losers = malloc(sizeof(task_handle_t) * (num_task - 1));
 
     task_entry_t tvir = {
@@ -226,7 +229,7 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
     for (size_t i = 0; i < num_task; i++) {
         SEPARATE_ID_GEN(handles[i], &handles[i], &gens[i]);
         ASSERT_VALID_HANDLE(w, handles[i], generation_map, gens[i]);
-        if (STATUS_OF(handles[i]) == FINISHED) { already_finished = handles[i]; break; }
+        if (STATUS_OF(handles[i]) == FINISHED) { already_finished = handles[i]; ret.winner_idx = i; break; }
         w->tasks.arr[handles[i]]->await_group = virtual;
     }
 
@@ -264,6 +267,7 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
 
     // Search the one that finished and clean up
     size_t winner = (size_t)-1;
+    size_t winner_idx = 0;
     size_t n_losers = 0;
     for (size_t i = 0; i < num_task; i++)
     {
@@ -272,8 +276,10 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
         // Asign to winner the first finished tasks it sees.
         if (STATUS_OF(handles[i]) == FINISHED) 
         { 
-                if (winner == (size_t)-1)
-                    winner = handles[i];  
+                if (winner == (size_t)-1) {
+                    winner = handles[i];
+                    winner_idx = i;
+                }
         } else {
             // Detach the losers
             w->tasks.arr[handles[i]]->detached = 1;
@@ -288,6 +294,7 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
 
     ret.num_losers = n_losers;
     ret.winner = winner;
+    ret.winner_idx = winner_idx;
 
     if (!TCB_AT(winner) || w->tasks.arr[winner]->detached) {
         free(gens);
@@ -298,6 +305,7 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
     }
 
     result = w->tasks.arr[winner]->returned;
+    ret.some = (result != NULL);
 
     __task_destroy(winner);
     __task_destroy(virtual);
@@ -511,9 +519,10 @@ void __task_drop_impl(task_handle_t th) {
 
     if (th != w->tasks.current) {
         __task_destroy(th);
+        return;
     }
-    
-    //Dispatcher will clean up
+
+
     __task_yield_impl();
 }
 
@@ -534,7 +543,27 @@ static void* __any_result_select_method() {
     }
     free(last_any_result);
     last_any_result = NULL;
+    return ret;
 
+}
+
+static any_result __any_result_cutloser_method() {
+    if (!last_any_result) { 
+        asc_error(WARN_RETURNING_NULL, "await_any::cut_losers()", 
+            (any_t)(void*)"cut_losers() method");
+        return (any_result){ 0 }; 
+    }
+
+    for (size_t i = 0; i < last_any_result->num_losers; i++)
+    {
+        __task_drop_impl(last_any_result->losers[i]);
+    }
+
+    free(last_any_result->losers);
+    any_result ret = { 0 };
+    memcpy(&ret, last_any_result, sizeof(any_result));
+    free(last_any_result);
+    last_any_result = NULL;
     return ret;
 
 }
@@ -555,6 +584,8 @@ static void* __all_result_get_method(int n) {
     last_all_result = NULL;
     return ret;
 }
+
+
 static void __all_result_none_method(){
     if (!last_all_result) return;
     free(last_all_result->returns);

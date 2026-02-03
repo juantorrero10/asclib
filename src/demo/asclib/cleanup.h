@@ -28,7 +28,7 @@ static inline void __drop_tcplistener(void* p) {
     free(l);
 }
 
-static inline void __drop_fd(void* fd) { if ((int)(uintptr_t)fd >= 0) close((int)(uintptr_t)fd);}
+static inline void __drop_fd(void* fd) { if ((int)(uintptr_t)fd >= 0) { close((int)(uintptr_t)fd); }}
 static inline void __drop_oneshot_tx(oneshot_tx_t tx) { if (tx) __oneshot_forcedrop_tx(tx); }
 static inline void __drop_oneshot_rx(oneshot_rx_t rx) { if (rx) __oneshot_forcedrop_rx(rx); }
 static inline void __drop_mpsc_tx(mpsc_tx_t tx) { if (tx) mpsc_drop_tx(tx); }

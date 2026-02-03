@@ -20,9 +20,12 @@ typedef size_t task_handle_t;
 typedef struct _Await_Any_Result {
     void* winner_return;
     task_handle_t winner;
+    size_t winner_idx;
     task_handle_t* losers;
     size_t num_losers;
+    int some;
     void* (*select)(void);
+    struct _Await_Any_Result (*cut_losers)(void);
 } any_result;
 
 typedef struct _Await_All_Result {

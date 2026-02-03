@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <string.h>
 #include <netinet/in.h>
+#include <signal.h>
 
 //#define __DEBUG
 
@@ -36,14 +37,15 @@ struct _Async_Read_Params{
     int fd;
     void* buff;
     size_t n;
-    int reset_doblock;
+    int toggle_blocking;
 };
 
 struct _Async_Write_Params {
     int fd;
     const void* buff;
     size_t n;
-    int reset_doblock;
+    int toggle_blocking;
+    int send_or_write;
 };
 
 static void* __internal_read(void* __arg) {
@@ -52,13 +54,14 @@ static void* __internal_read(void* __arg) {
     int fd = ap->fd;
     void* buff = ap->buff;
     size_t sz = ap->n;
-    int r = ap->reset_doblock;
+    int r = ap->toggle_blocking; (void)r;
 
     free(ap);
 
     claim_fd(fd, w->tasks.current);
-    set_nonblock(fd);
+    if(r) set_nonblock(fd);
 
+    
     for (;;) {
         ssize_t n = read(fd, buff, sz);
         if (n >= 0)  {
@@ -84,16 +87,18 @@ static void* __internal_write(void* __arg) {
     const char* p = (const char*)ap->buff;
     size_t total_to_write = ap->n;
     size_t written_so_far = 0;
-    int r = ap->reset_doblock;
+    int r = ap->toggle_blocking; (void)r;
+    int send_or_write = ap->send_or_write;
 
     free(ap);
 
     claim_fd(fd, w->tasks.current);
-    set_nonblock(fd);
+    if (r) set_nonblock(fd);
 
     for (;;) {
-        ssize_t n = write(fd, p + written_so_far, total_to_write - written_so_far);
-
+        ssize_t n = (send_or_write)
+            ? write(fd, p + written_so_far, total_to_write - written_so_far)
+            : send(fd, p + written_so_far, total_to_write - written_so_far, MSG_NOSIGNAL);
         if (n >= 0) {
             written_so_far += n;
 
@@ -120,8 +125,6 @@ static void* __internal_write(void* __arg) {
         }
 
     }
-    
-
 }
 
 
@@ -141,8 +144,30 @@ task_handle_t asc_write(int fd, void* buff, size_t __n) {
     ap->fd = fd;
     ap->buff = buff;
     ap->n = __n;
+    ap->send_or_write = 1;
 
-    ap->reset_doblock = (fd == 1 || fd == 2) ? 1 : 0;
+    ap->toggle_blocking = (fd == 1 || fd == 2) ? 1 : 0;
+
+    task_entry_t te = {
+        .fptr = __internal_write,
+        .value = ap,
+        .arg_size = sizeof(void*),
+        .n_pages = 0,
+    };
+
+    return __task_create_ex(
+        te, 4096, ENABLE_GUARD_PAGE
+    );
+}
+
+task_handle_t asc_send(int fd, void* buff, size_t __n) {
+    struct _Async_Write_Params* ap = malloc(sizeof(struct _Async_Write_Params));
+    ap->fd = fd;
+    ap->buff = buff;
+    ap->n = __n;
+    ap->send_or_write = 0;
+
+    ap->toggle_blocking = (fd >= 1 && fd <= 2);
 
     task_entry_t te = {
         .fptr = __internal_write,
@@ -162,7 +187,7 @@ task_handle_t asc_read(int fd, void* buff, size_t __n) {
     ap->fd = fd;
     ap->buff = buff;
     ap->n = __n;
-    ap->reset_doblock = (fd == 0);
+    ap->toggle_blocking = (fd == 0);
 
     task_entry_t te = {
         .fptr = __internal_read,
@@ -174,6 +199,8 @@ task_handle_t asc_read(int fd, void* buff, size_t __n) {
     return __task_create_ex(
         te, 4096, ENABLE_GUARD_PAGE);
 }
+
+
 
 void claim_fd(int fd, size_t task) {
 
@@ -198,6 +225,7 @@ void release_fd(int fd) {
 void __io_free_hashmap() {
     hm_dealloc(&fdh);
 }
+
 
 static void set_nonblock(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);

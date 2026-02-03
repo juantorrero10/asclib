@@ -59,7 +59,7 @@ timeout_t heap_pop(timer_heap_t* hp);
 u64_arrlist_t* u64al_alloc(size_t initial_capacity);
 void u64al_dealloc(u64_arrlist_t** arr);
 void u64al_append(u64_arrlist_t* arr, uint64_t entry);
-uint64_t u64_trim(u64_arrlist_t* arr, int _set_zero);
+uint64_t u64al_pop(u64_arrlist_t* arr, int _set_zero);
 uint64_t u64al_pop_front(u64_arrlist_t* arr);
 
 g_arrlist_t* gal_alloc(size_t initial_capacity, size_t chunk_size);

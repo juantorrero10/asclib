@@ -10,6 +10,8 @@ typedef struct _ASCLIB_Oneshot_Channel {
     size_t payload_sz;
     int sent;
 
+    u64_arrlist_t* action_waiters;
+
     // -1: closed -2: reference state
     task_handle_t tx_owner;
     task_handle_t rx_owner;

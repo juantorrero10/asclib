@@ -165,6 +165,7 @@ u64_arrlist_t* u64al_alloc(size_t initial_capacity) {
 }
 
 void u64al_dealloc(u64_arrlist_t** arr) {
+    if (!(*arr)) return;
     free((*arr)->data);
     free((*arr));
     *arr = NULL;
@@ -178,7 +179,7 @@ void u64al_append(u64_arrlist_t* arr, uint64_t entry) {
     arr->data[arr->size++] = entry;
 }
 
-uint64_t u64_trim(u64_arrlist_t* arr, int _set_zero) {
+uint64_t u64al_pop(u64_arrlist_t* arr, int _set_zero) {
     if (arr->size == 0) return (uint64_t)-1;
     uint64_t ret = arr->data[arr->size-1];
     if (_set_zero) arr->data[arr->size-1] = 0UL;

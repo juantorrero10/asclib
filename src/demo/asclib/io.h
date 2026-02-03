@@ -8,6 +8,7 @@
 
 task_handle_t asc_read(int fd, void* buff, size_t __n);
 task_handle_t asc_write(int fd, void* buff, size_t __n);
+task_handle_t asc_send(int fd, void* buff, size_t __n);
 int asc_open(const char* path, int flags, mode_t mode);
 
 

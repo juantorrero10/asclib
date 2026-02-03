@@ -1,4 +1,4 @@
-#define _DEFAULT_SOURCE
+#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <sys/socket.h>
@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 
 #define __DEBUG
 #include <log.h>
@@ -83,7 +84,7 @@ async_(__internal_tcp_accept, tcp_listerner_t* l) {
     worker_t* w = tl_worker;
     while(1) {
         claim_fd(arg(l)->fd, w->tasks.current);
-        int client_fd = accept(arg(l)->fd, (struct sockaddr*)&client, &clen);
+        int client_fd = accept4(arg(l)->fd, (struct sockaddr*)&client, &clen, SOCK_NONBLOCK | SOCK_CLOEXEC);
 
         // Instant connecction
         if (client_fd >= 0) {

@@ -12,15 +12,20 @@
 
 
 async(handle_client, int client_fd; oneshot_tx_ref_t shutdown_ref) {
+    detach;
     int fd = clean_on_drop(arg(client_fd));
     printf("[+]: New Connection -> %d\n", fd);
     char buf[1024];
     while (1) {
-        if (oneshot_status(arg(shutdown_ref)) != ST_CHAN_READY) {
-            break;
-        } 
-        // asc_read handles the epoll yield internally
-        ssize_t n = await_ret(ssize_t, asc_read(fd, buf, sizeof(buf)));
+        // Wait until user returns something or channels get closed/used
+        ssize_t n = any_unwrap_or(ssize_t,
+                await_any(
+                    asc_read(fd, buf, sizeof(buf)),
+                    oneshot_wait_change(arg(shutdown_ref))
+                ).cut_losers(),
+            { break; }
+        );
+
         if (n <= 0)
             break;
 
@@ -31,11 +36,10 @@ async(handle_client, int client_fd; oneshot_tx_ref_t shutdown_ref) {
             // CLAIM ownership right before the send as per your design
             oneshot_tx_t tx = clean_on_drop(oneshot_take_tx(arg(shutdown_ref)));
             
-            int signal_payload = 0xDEAD; 
+            int signal_payload = 0xDEAD;
             await(asc_oneshot_send(tx, &signal_payload));
             break; 
         }
-
         // Echo back to python
         await(asc_write(fd, "BACK", 5));
     }
