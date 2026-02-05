@@ -44,6 +44,14 @@ typedef struct _Generic_Array_List {
     size_t capacity; 
 } g_arrlist_t;
 
+
+typedef struct _FD_OWNING_SET {
+    task_handle_t* data;
+    size_t size;
+    size_t capacity;
+    uint8_t* occ;
+} fd_map_t;
+
 uu_hash_map* hm_alloc(size_t capacity);
 void hm_dealloc(uu_hash_map** hashmap);
 int hm_add_entry(uu_hash_map* hm, size_t k, size_t v);
@@ -70,6 +78,12 @@ void gal_set_at(g_arrlist_t* arr, int n, void* data);
 void gal_get_at(g_arrlist_t* arr, int n,  void* buff);
 int gal_cmp_at(g_arrlist_t* arr, int n, void* cmp_to);
 int gal_pop(g_arrlist_t* arr, void* buffer);
+
+fd_map_t* fd_map_alloc();
+void fdm_free(fd_map_t** fdm);
+int fdm_add_entry(fd_map_t* fdm, int fd, task_handle_t th);
+int fdm_remove_entry(fd_map_t* fdm, int fd);
+int fdm_contains(fd_map_t* fdm, int fd);
 
 
 #endif // HASHMAP_H_

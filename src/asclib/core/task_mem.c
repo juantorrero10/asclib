@@ -13,6 +13,7 @@
 #include <dispatcher.h>
 #include <log.h>
 #include <collections.h>
+#include <runtime.h>
 
 
 
@@ -152,7 +153,6 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
 
     // Cast gen to 64-bit BEFORE shifting, or it will overflow before the OR
     task_handle_t final_handle = ((uint64_t)final_gen << 32) | (uint32_t)new_id;
-
     return final_handle;
 }
 
@@ -168,11 +168,6 @@ void __task_destroy(task_handle_t t) {
     TCB* ta = w->tasks.arr[t];
 
     if (TCB_AT(t)) {
-        if (ta->w_reason == WAIT_FD) {
-            if (ta->wait_for.fd >= 0) {
-                epoll_ctl(w->sync.epoll_fd, EPOLL_CTL_DEL, ta->wait_for.fd, NULL);
-            }
-        }
         
         // Reset to safe defaults before freeing memory
         ta->w_reason = WAIT_NONE;

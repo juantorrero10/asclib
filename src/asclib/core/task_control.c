@@ -411,7 +411,7 @@ all_result __task_await_all_impl(task_handle_t* handles, size_t num_task) {
     return res;
 }
 
-void __task_wait_on_fd(int fd, uint32_t events) {
+void __task_wait_on_fd(int fd) {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "__task_wait_on_fd");
     size_t curr = w->tasks.current;
@@ -421,7 +421,7 @@ void __task_wait_on_fd(int fd, uint32_t events) {
     t->status = WAITING;
     t->wait_for.fd = fd;
 
-
+    /*
    struct epoll_event ev = { .events = events | EPOLLONESHOT, .data.u32 = (uint32_t)curr };
 
     // Try MOD first, if it fails, ADD. This ensures the kernel always has the right Task ID
@@ -429,7 +429,7 @@ void __task_wait_on_fd(int fd, uint32_t events) {
         if (errno == ENOENT) {
             epoll_ctl(w->sync.epoll_fd, EPOLL_CTL_ADD, fd, &ev);
         }
-    }
+    }*/
 
     __task_yield_impl();
 
@@ -493,8 +493,7 @@ void __task_drop_impl(task_handle_t th) {
         t->wait_for.timestamp = 0;
         break;
     case WAIT_FD:
-        epoll_ctl(w->sync.epoll_fd, EPOLL_CTL_DEL, t->wait_for.fd, NULL);
-        release_fd(t->wait_for.fd);
+        __release_fd(t->wait_for.fd);
         break;
     
     default:

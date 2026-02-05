@@ -418,7 +418,7 @@ task_handle_t oneshot_wait_change(void* any_end) {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "CHANNELS::oneshot_wait_change()");
 
-    return task_spawn_ex(__internal_wait_change, 1024, 1, .any_end = any_end);
+    return task_spawn_ex(__internal_wait_change, 4096, 1, .any_end = any_end);
 }
 
 

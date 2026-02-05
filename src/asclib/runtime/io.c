@@ -7,9 +7,10 @@
 #include <netinet/in.h>
 #include <signal.h>
 #include <sys/sendfile.h>
+#include <sys/uio.h>
 
 
-//#define __DEBUG
+#define __DEBUG
 
 #include <user_lib.h>
 #include <defs.h>
@@ -23,7 +24,7 @@
 #define ENABLE_GUARD_PAGE 1
 
 #define HASHMAP_INIT_CAPACITY 6
-TLS uu_hash_map* fdh = NULL;
+TLS fd_map_t* fdh = NULL;
 
 //Forward decl
 static void set_nonblock(int fd);
@@ -59,25 +60,26 @@ static void* __internal_read(void* __arg) {
 
     free(ap);
 
-    claim_fd(fd, GET_FULL_HANDLE());
+    __claim_fd(fd, GET_FULL_HANDLE(), EPOLLIN);
     if(r) set_nonblock(fd);
 
     
     for (;;) {
         ssize_t n = (o)
-            ? recv(fd, buff, sz, MSG_DONTWAIT)
+            ? recv(fd, buff, sz, MSG_DONTWAIT | MSG_NOSIGNAL)
             : read(fd, buff, sz);
         if (n >= 0)  {
-            release_fd(fd); 
-            if (r)set_block(fd); 
+            if (r)set_block(fd);
+            __release_fd(fd);
             task_return(ssize_t, n); 
         }
 
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            __task_wait_on_fd(fd, EPOLLIN);
+            __task_wait_on_fd(fd);
+            yield;
             continue;
         }
-        release_fd(fd);
+        __release_fd(fd);
         if (r) set_block(fd);
         task_return(ssize_t, -1);
     }
@@ -95,35 +97,35 @@ static void* __internal_write(void* __arg) {
 
     free(ap);
 
-    claim_fd(fd, w->tasks.current);
+    __claim_fd(fd, GET_FULL_HANDLE(), EPOLLOUT);
     if (r) set_nonblock(fd);
 
     for (;;) {
         ssize_t n = (send_or_write)
             ? write(fd, p + written_so_far, total_to_write - written_so_far)
-            : send(fd, p + written_so_far, total_to_write - written_so_far, MSG_NOSIGNAL);
+            : send(fd, p + written_so_far, total_to_write - written_so_far, MSG_NOSIGNAL | MSG_DONTWAIT);
         if (n >= 0) {
             written_so_far += n;
 
             //Full write
             if (written_so_far >= total_to_write) {
-                release_fd(fd);
+                __release_fd(fd);
                 if (r) set_block(fd);
                 task_return(ssize_t, written_so_far);
             }   
             //Partials write -> yield
-            __task_wait_on_fd(fd, EPOLLOUT);
+            __task_wait_on_fd(fd);
             continue;
         }
 
         if (n == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                __task_wait_on_fd(fd, EPOLLOUT);
+                __task_wait_on_fd(fd);
                 continue;
             }
             // Erorr
             if (r) set_block(fd);
-            release_fd(fd);
+            __release_fd(fd);
             task_return(ssize_t, -1);
         }
 
@@ -226,28 +228,39 @@ task_handle_t asc_recv(int fd, void* buff, size_t __n) {
 
 
 
-void claim_fd(int fd, size_t task) {
+void __claim_fd(int fd, size_t task, uint32_t events) {
 
     if (!fdh) {
-        fdh = hm_alloc(HASHMAP_INIT_CAPACITY);
+        fdh = fd_map_alloc();
     }
 
-    assert(fdh);
+    worker_t* w = tl_worker;
 
-    int n = hm_add_entry(fdh, fd, task);
+    int n = fdm_add_entry(fdh, fd, task);
+
+    struct epoll_event ev = { .events = events | EPOLLONESHOT, .data.u64 = GET_FULL_HANDLE() };
+
+    if (epoll_ctl(w->sync.epoll_fd, EPOLL_CTL_MOD, fd, &ev) == -1) {
+        if (errno == ENOENT) {
+            epoll_ctl(w->sync.epoll_fd, EPOLL_CTL_ADD, fd, &ev);
+        }
+    }
 
     if (n == 0) {
-        asc_io_error(IO_PANIC_LOCKED_FD, "IO::claim_fd()", (any_t)fd, (any_t)task);
+        asc_io_error(IO_PANIC_LOCKED_FD, "IO::__claim_fd()", (any_t)fd, (any_t)task);
     };
 }
 
-void release_fd(int fd) {
+void __release_fd(int fd) {
+    assert(fd >= 0);
+    worker_t* w = tl_worker;
     assert(fdh);
-    assert(hm_remove_entry(fdh, (size_t)fd));
+    epoll_ctl(w->sync.epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+    assert(fdm_remove_entry(fdh, fd));
 }
 
-void __io_free_hashmap() {
-    hm_dealloc(&fdh);
+void __io_free_fdmap() {
+    fdm_free(&fdh);
 }
 
 
@@ -271,7 +284,7 @@ async(__internal_sendfile, int out_fd; int in_fd; size_t total_size) {
     int out_fd = arg(out_fd);
     off_t current_offset = 0;
     worker_t* w = tl_worker;
-    claim_fd(out_fd, GET_FULL_HANDLE());
+    __claim_fd(out_fd, GET_FULL_HANDLE(), EPOLLOUT);
     // Assuming out_fd (socket) is already non-blocking from the accept_loop
 
     for (;;) {
@@ -282,28 +295,211 @@ async(__internal_sendfile, int out_fd; int in_fd; size_t total_size) {
         if (n >= 0) {
             // Success! current_offset was updated by the kernel.
             if ((size_t)current_offset >= total_size) {
-                release_fd(out_fd);
+                __release_fd(out_fd);
                 task_return(ssize_t, (ssize_t)current_offset);
             }
             
             // Partial write: wait for socket buffer space
-            __task_wait_on_fd(out_fd, EPOLLOUT);
+            __task_wait_on_fd(out_fd);
             continue;
         }
 
         if (n == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                __task_wait_on_fd(out_fd, EPOLLOUT);
+                __task_wait_on_fd(out_fd);
                 continue;
             }
             // Real Error
-            release_fd(out_fd);
+            __release_fd(out_fd);
             task_return(ssize_t, -1);
         }
     }
     end_return_void();
 }
 task_handle_t asc_sendfile(int out_fd, int in_fd, size_t total_size) {
-    return task_spawn_ex(__internal_sendfile, 1024, 1, .out_fd = out_fd, .in_fd = in_fd, .total_size = total_size);
+    return task_spawn_ex(__internal_sendfile, 4096, 1, .out_fd = out_fd, .in_fd = in_fd, .total_size = total_size);
 }
 
+async(__internal_readv, int fd; const struct iovec *_iovec; int vector_size; int toggle_blocking) {
+    int fd =                      arg(fd);
+    const struct iovec* __iovec = arg(_iovec);
+    int vector_size =             arg(vector_size);
+    int r =                       arg(toggle_blocking);
+
+    worker_t* w = tl_worker;
+
+    __claim_fd(fd, GET_FULL_HANDLE(), EPOLLIN);
+    if (r) set_nonblock(fd);
+    while(1) {
+        ssize_t n = readv(fd, __iovec, vector_size);
+        if (n >= 0) {
+            if (r) set_block(fd);
+            __release_fd(fd);
+            task_return(ssize_t, n);
+        }
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            __task_wait_on_fd(fd);
+            yield;
+            continue;
+        }
+
+        if (n <= 0) {
+            if (r) set_block(fd);
+            __release_fd(fd);
+            task_return(ssize_t, -1);
+        }
+    }
+    end_return_void();
+}
+
+async( __internal_recvmsg, int fd; struct msghdr *message) {
+    int fd                  = arg(fd);
+    struct msghdr* msg      = arg(message);
+    worker_t* w = tl_worker;
+
+    __claim_fd(fd, GET_FULL_HANDLE(), EPOLLIN);
+    while(1) {
+        ssize_t n = recvmsg(fd, msg, MSG_DONTWAIT | MSG_NOSIGNAL);
+
+        if (n >= 0) {
+            __release_fd(fd);
+            task_return(ssize_t, n);
+        }
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            __task_wait_on_fd(fd);
+            yield;
+            continue;
+        }
+        if (n <= 0) {
+            __release_fd(fd);
+            task_return(ssize_t, -1);
+        }
+    }
+    end_return_void();
+}
+
+static void advance_iov(struct iovec** iov, int* iovcnt, ssize_t n) {
+    while (*iovcnt > 0 && n > 0) {
+        if ((size_t)n >= (*iov)->iov_len) {
+            n -= (*iov)->iov_len;
+            (*iov)++;
+            (*iovcnt)--;
+        } else {
+            (*iov)->iov_base = (char*)(*iov)->iov_base + n;
+            (*iov)->iov_len -= n;
+            break;
+        }
+    }
+}
+
+async(__internal_writev, int fd; const struct iovec *vecs; int vector_size; int toggle_blocking) {
+    int fd = arg(fd);
+    const struct iovec *vecs = arg(vecs);
+    int vsz = arg(vector_size);
+    int tb = arg(toggle_blocking);
+
+    ssize_t total_writen = 0;
+    worker_t* w = tl_worker;
+
+    __claim_fd(fd, GET_FULL_HANDLE(), EPOLLOUT);
+    if (tb) set_nonblock(fd);
+
+    struct iovec* ptr = (struct iovec*) vecs;
+
+    while (vsz > 0) {
+        ssize_t n = writev(fd, ptr, vsz);
+
+        if (n > 0) {
+            total_writen += n;
+            advance_iov(&ptr, &vsz, n);
+            continue;
+        }
+
+        if (n == 0) {
+            if (tb) set_block(fd);
+            __task_wait_on_fd(fd);
+            continue;
+        }
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            if (tb) set_block(fd);
+            __task_wait_on_fd(fd);
+            continue;
+        }
+
+        if ( n < 0) {
+            if (tb) set_block(fd);
+            __release_fd(fd);
+            task_return(ssize_t, -1);
+        }
+    }
+    if (tb) set_block(fd);
+    __release_fd(fd);
+    end_return(ssize_t, total_writen);
+}
+
+
+async(__internal_sendmsg, int fd; const struct msghdr *msg) {
+    int fd = arg(fd);
+    const struct msghdr* msg = arg(msg);
+
+    worker_t* w = tl_worker;
+
+    __claim_fd(fd, GET_FULL_HANDLE(), EPOLLOUT);
+
+    size_t total_writen = 0;
+
+    struct iovec* iov = msg->msg_iov;
+    size_t iov_len = msg->msg_iovlen;
+
+    while (iov_len > 0) {
+        ssize_t n = sendmsg(fd, msg, MSG_NOSIGNAL | MSG_DONTWAIT);
+
+        if (n > 0) {
+            total_writen += n;
+            advance_iov(&iov, (int*)&iov_len, n);
+            continue;
+        }
+
+        if (n == 0) {
+            __task_wait_on_fd(fd);
+            continue;
+        }
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            __task_wait_on_fd(fd);
+            continue;
+        }
+
+        if ( n < 0) {
+            __release_fd(fd);
+            task_return(ssize_t, -1);
+        }
+    }
+    __release_fd(fd);
+    end_return(ssize_t, total_writen);
+}
+
+
+
+task_handle_t asc_readv(int fd, const struct iovec *_iovec, int vector_size) {
+    return task_spawn_ex(__internal_readv, 4096, 1, 
+        .fd = fd, ._iovec = _iovec, .vector_size = vector_size, .toggle_blocking = (fd <= 2) );
+}
+
+
+task_handle_t asc_writev(int fd, const struct iovec *_iovec, int vector_size) {
+    return task_spawn_ex(__internal_writev, 4096, 1, 
+        .fd = fd, .vecs = _iovec, .vector_size = vector_size, .toggle_blocking = (fd <= 2) );
+}
+
+task_handle_t asc_recvmsg(int fd, struct msghdr *msg) {
+    return task_spawn_ex(__internal_recvmsg, 4096, 1, 
+        .fd = fd, .message = msg);
+}
+
+task_handle_t asc_sendmsg(int fd, const struct msghdr *msg) {
+    return task_spawn_ex(__internal_sendmsg, 4096, 1, 
+        .fd = fd, .msg = msg);
+}

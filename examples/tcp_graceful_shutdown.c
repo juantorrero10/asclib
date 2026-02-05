@@ -29,16 +29,21 @@ async(handle_client, int client_fd; oneshot_tx_ref_t shutdown_ref) {
     char buf[1024];
     while (1) {
         // Wait until user returns something or channels get closed/used
-        ssize_t n = any_unwrap_or(ssize_t,
+        ssize_t n = any_some_or(ssize_t,
                 await_any(
-                    asc_read(fd, buf, sizeof(buf)),
+                    asc_recv(fd, buf, sizeof(buf)),
                     oneshot_wait_change(arg(shutdown_ref))
                 ).cut_losers(),
-            { break; }
+            {
+                printf("[!]: <%d> Other client sent the shutdown signal\n", fd); 
+                break; 
+            }
         );
 
-        if (n <= 0) // Client disconnect or other errors.
+        if (n <= 0) {
+            printf("[*]: <%d> Error reading form client: %s\n",fd, strerror(errno));
             break;
+        }
 
         // Check for  "exit"
         if (n >= 4 && memcmp(buf, "exit", 4) == 0) {
@@ -53,7 +58,7 @@ async(handle_client, int client_fd; oneshot_tx_ref_t shutdown_ref) {
             break; 
         }
         // Echo back
-        await(asc_write(fd, "BACK", 5));
+        await(asc_send(fd, "BACK", 5));
     }
     printf("[-] Closed connection: %d\n", fd);
     end_return_void();

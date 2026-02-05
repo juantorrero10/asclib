@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 void __task_yield_impl();
-void __task_wait_on_fd(int fd, uint32_t events);
+void __task_wait_on_fd(int fd);
 void __hm_await_free();
 
 

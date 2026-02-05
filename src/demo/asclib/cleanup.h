@@ -7,6 +7,7 @@
 
 #include "sync.h"
 #include <unistd.h>
+#include <sys/socket.h>
 #include <stdio.h>
 
 typedef struct {
@@ -18,13 +19,14 @@ typedef struct {
 void __mpsc_forcedrop_rx(mpsc_rx_t rx);
 void __oneshot_forcedrop_rx(oneshot_rx_t);
 void __oneshot_forcedrop_tx(oneshot_tx_t tx);
+void __release_fd(int fd);
 
 // Deallocators
 static inline void __drop_pointer(void* p) {if (p) free(p); }
 static inline void __drop_tcplistener(void* p) {
     if (!p) return;
     tcp_listerner_t* l = (tcp_listerner_t*)p;
-    if (l->fd >= 0) close(l->fd);
+    if (l->fd >= 0) shutdown(l->fd, SHUT_RDWR);
     free(l);
 }
 

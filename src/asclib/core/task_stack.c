@@ -14,8 +14,10 @@
 #include <ascerr.h>
 #include <log.h>
 #include <task_stack.h>
+#include <collections.h>
 
-
+// Managed by task_mem.c
+extern TLS g_arrlist_t* generation_map;
 
 // Can alloc an extra guard_page for overflow detection.
 // The guard page allocation is only recommended when allocating a whole page multiple (4kb)
@@ -45,7 +47,7 @@ void create_stack_frame(size_t stack_size, TCB* t, uint32_t alloc_guard) {
     if (t->guard_page)
         OKAY("Guard page -> (%p - %p), Stack (%p - %p), total %zu", stack - PAGE_SIZE, stack - 1, stack, sp, stack_size + alloc_guard * PAGE_SIZE);
     else
-        OKAY("Stack (%p - %p)", stack, sp);
+        OKAY("Stack (%p - %p) total %zu", stack, sp, stack_size);
     #endif
 
     // Push fake rbp
@@ -96,7 +98,7 @@ void sigsegv_stackoverflow(int sigs, siginfo_t* si, void* unused) {
     // Correct check: Did the fault happen inside the task's specific guard page?
     if (t->guard_page && fault_addr >= guard_start && fault_addr < guard_end) {
         char buff[50];
-        sprintf(buff, "task<%zu>: %p", w->tasks.current, t->fptr);
+        sprintf(buff, "task<0x%lx>: %p", GET_FULL_HANDLE(), t->fptr);
         asc_error(PANIC_STACK_OVERFLOW_GUARDPAGE, buff, (any_t)fault_addr);
     } else {
         signal(sigs, SIG_DFL);

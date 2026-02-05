@@ -82,25 +82,24 @@ async_(__internal_tcp_accept, tcp_listerner_t* l) {
     struct sockaddr_in client;
     socklen_t clen = sizeof(client);
     worker_t* w = tl_worker;
+    __claim_fd(arg(l)->fd, w->tasks.current, EPOLLIN);
     while(1) {
-        claim_fd(arg(l)->fd, w->tasks.current);
         int client_fd = accept4(arg(l)->fd, (struct sockaddr*)&client, &clen, SOCK_NONBLOCK | SOCK_CLOEXEC);
 
         // Instant connecction
         if (client_fd >= 0) {
-            release_fd(arg(l)->fd);
+            __release_fd(arg(l)->fd);
             task_return(int, client_fd); 
         }
 
         // No clients -> lazy wait
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            __task_wait_on_fd(arg(l)->fd, EPOLLIN | EPOLLONESHOT);
-            release_fd(arg(l)->fd);
+            __task_wait_on_fd(arg(l)->fd);
             yield;
             continue;
         }
 
-        release_fd(arg(l)->fd);
+        __release_fd(arg(l)->fd);
         task_return(int, -1);
     }
     
@@ -114,5 +113,5 @@ task_handle_t asc_tcp_accept(tcp_listerner_t* l) {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "NET::asc_tcp_accept()");
 
-    return task_spawn_ex(__internal_tcp_accept, 1024, 1, .l = l);
+    return task_spawn_ex(__internal_tcp_accept, 4096, 1, .l = l);
 }

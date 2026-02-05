@@ -259,3 +259,56 @@ int gal_pop(g_arrlist_t* arr, void* buffer) {
     arr->size--;
     return 1;
 }
+
+///////////////////////////
+
+#define MAX(a, b) (a >= b)? a : b 
+
+// Initial capacity 3 + task capacity
+fd_map_t* fd_map_alloc() {
+    worker_t* w = tl_worker;
+    size_t cap = 3 + w->tasks.capacity;
+    fd_map_t* ret = malloc(sizeof(fd_map_t));
+    ret->data = malloc(sizeof(task_handle_t) * (cap));
+    ret->occ = malloc(cap);
+    memset(ret->occ, 0, cap);
+    ret->size = 0;
+    ret->capacity = cap;
+    return ret;
+}
+
+void fdm_free(fd_map_t** fdm) {
+    if (!(*fdm)) return;
+    free((*fdm)->data);
+    free((*fdm)->occ);
+    free((*fdm));
+    *fdm = NULL;
+}
+
+int fdm_add_entry(fd_map_t* fdm, int fd, task_handle_t th) {
+    if ((size_t)fd >= fdm->capacity) {
+        size_t new_cap = MAX((size_t)fd, fdm->capacity * 2);
+        fdm->data = realloc(fdm->data, new_cap);
+        fdm->occ = realloc(fdm->occ, new_cap);
+        memset(fdm->occ + fdm->capacity, 0, new_cap - fdm->capacity);
+        fdm->capacity = new_cap;
+    }
+
+    if (fdm->data[fd] == th && fdm->occ[fd] == 1) {
+        //Colision
+        return 0;
+    }
+
+    fdm->data[fd] = th;
+    fdm->size++;
+    fdm->occ[fd] = 1;
+    return 1;
+}
+
+inline int fdm_remove_entry(fd_map_t* fdm, int fd) {
+    if (!fdm->occ[fd]) return 0;
+    fdm->occ[fd] = 0; return 1;
+    fdm->size--;
+}
+
+inline int fdm_contains(fd_map_t* fdm, int fd) { return (fdm->occ[fd] == 1); }

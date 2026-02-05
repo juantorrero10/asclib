@@ -208,7 +208,7 @@ void __task_drop_impl(task_handle_t th);
     __task_await_all_impl(_group, __ASCLIB_COUNT_ARGS(__VA_ARGS__)); \
 })
 
-#define any_unwrap_or(type, res, fallback)        \
+#define any_some_or(type, res, fallback)        \
     ({                                            \
         any_result _r = (res);                \
         if (!_r.some) {                           \

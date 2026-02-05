@@ -8,11 +8,11 @@
 #include <dispatcher.h>
 #include <collections.h>
 
-extern TLS uu_hash_map* fdh;
+extern TLS fd_map_t* fdh;
 
 static ssize_t get_owner(int fd) {
     assert(fdh);
-    return hm_get_v(fdh, (size_t)fd);
+    return fdh->data[fd];
 }
 
 
@@ -137,7 +137,7 @@ void asc_io_error(io_err_t ioerr, const char* function, any_t value, any_t value
 
     case IO_PANIC_LOCKED_FD:
         ssize_t owner = get_owner(value.i64);
-        RT_ERR("File descriptor {%ld} was already being used by Task<%zd> and Task<%zd> tried to claim it", function, value.i64, owner, value2.i64);
+        RT_ERR("File descriptor {%ld} was already being used by Task<0x%lx> and Task<0x%lx> tried to claim it", function, value.u64, owner, value2.u64);
         panic_linux("The same file descriptor cannot be used at the same time by two tasks", function);
         break;
     default:

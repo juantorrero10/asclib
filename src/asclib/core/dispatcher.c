@@ -133,10 +133,11 @@ static void lazy_wait(worker_t* w) {
 
     // 3. Handle I/O wakeups
     for (int i = 0; i < n_ready; i++) {
-        size_t wake = w->sync.ready_events[i].data.u32;
-        if (w->tasks.arr[wake]) {
-            w->tasks.arr[wake]->w_reason = WAIT_NONE;
-            w->tasks.arr[wake]->status = READY;
+        size_t wake = w->sync.ready_events[i].data.u64;
+        size_t wake_l32 = LOWER_32(wake);
+        if (w->tasks.arr[wake_l32] && !IS_STALE(wake)) {
+            w->tasks.arr[wake_l32]->w_reason = WAIT_NONE;
+            w->tasks.arr[wake_l32]->status = READY;
         }
     }
 }
@@ -151,7 +152,7 @@ void* dispatcher(void* arg) {
     assert(w->returned_array);
     
 
-    set_sigsegv_handler();
+    //set_sigsegv_handler();
     hmawait = NULL;
     
     TCB* t = NULL;
@@ -298,7 +299,7 @@ void* dispatcher(void* arg) {
 
     //Free the (Thread)LS objects
     __free_taskmem_objs();
-    __io_free_hashmap();
+    __io_free_fdmap();
     __hm_await_free();
     heap_dealloc(&timers);
 
