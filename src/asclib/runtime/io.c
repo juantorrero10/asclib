@@ -71,17 +71,21 @@ static void* __internal_read(void* __arg) {
         if (n >= 0)  {
             if (r)set_block(fd);
             __release_fd(fd);
+            //INFO("DONE");
             task_return(ssize_t, n); 
         }
 
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            //INFO("YIELD");
             __task_wait_on_fd(fd);
             yield;
             continue;
+        } if (n < 0) {
+            __release_fd(fd);
+            //INFO("ERR");
+            if (r) set_block(fd);
+            task_return(ssize_t, -1);
         }
-        __release_fd(fd);
-        if (r) set_block(fd);
-        task_return(ssize_t, -1);
     }
 }
 

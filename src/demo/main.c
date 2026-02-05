@@ -11,45 +11,42 @@
 async(sender, int fd) {
     detach;
     int fd = clean_on_drop(arg(fd));
-    asc_sleep(200);
 
-    await(asc_write(fd, "___HELLO____WORLD___", 20));
+    await(asc_send(fd, "___HELLO____WOR", 15));
     end_return_void();
 }
 
-/* async(counter) {
-    for (size_t i = 0; i < 10; i++)
-    {
-        printf("i = %zu\n", i);
-        yield;
-    }
-    end_return_void();
-}
- */
 
 async(main_task) {
 
-    char a[20] = { 0 };
+    char a[10] = { 1 };
     char b[10] = { 0 };
 
-    /*
-    struct iovec vec[2] = {
+    memset(b, 65, 10);
+
+    struct iovec vecs[] = {
         {.iov_base = a, .iov_len = 10},
-        {.iov_base = b, .iov_len = 10},
-    };*/
+        {.iov_base = b, .iov_len = 10}
+    };
+
+
+    struct msghdr msg = {
+        .msg_iov = vecs,
+        .msg_iovlen = 2
+    };
 
     int fds[2];
 
     socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
 
     task_spawn(sender, .fd = fds[1]);
-    //task_spawn(counter);
-    ssize_t n = await_ret(ssize_t, asc_read(fds[0], a, 20));
-    //ssize_t n = await_ret(ssize_t, asc_readv(fds[0], vec, 2));
+    clean_on_drop(fds[1]);
+
+    ssize_t n = await_ret(ssize_t, asc_recvmsg(fds[0], &msg));
     if (n <= 0) {
         printf("some wrong %s\n", strerror(errno));
     } else {
-        printf("Buff1: %s\nBuff2: %s\n", a, b);
+        printf("Buff1: %.*s\nBuff2: %.*s\n", 10, a, ((int)n-10), b);
     }
 
     end_return_void();

@@ -39,7 +39,6 @@ void task_detach(task_handle_t target);
 __attribute__((noreturn))
 void task_trampoline(void) {
     
-
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "task_trampoline");
     TCB* t = w->tasks.arr[w->tasks.current];

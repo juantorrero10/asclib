@@ -90,6 +90,7 @@ static void log_decision_state(worker_t* w, char* buff) {
 
 static void lazy_wait(worker_t* w) {
     // Calculate the next timer to wake up
+    INFO("LW");
     int64_t timeout_ms = -1; // Default: block indefinitely if no timers
     uint64_t now = get_time_ms();
     size_t top;
@@ -197,10 +198,10 @@ void* dispatcher(void* arg) {
         // Next task election.
         for (size_t i = 0; i < w->tasks.capacity; i++)
         {
-            idx = (w->tasks.current + 1 + i) % w->tasks.capacity;    
-
+            idx = (w->tasks.current + 1 + i) % w->tasks.capacity;
+            
             if (!TCB_AT(idx)) continue;
-
+            
             // Candidate may be sleeping
             if (SLEEPING(w->tasks.arr[idx])) {
                 try_wake_up(w->tasks.arr[idx]);
@@ -263,11 +264,12 @@ void* dispatcher(void* arg) {
         print_ctx(&w->sched_ctx);
         #endif
         
+    
         _asm_ctx_switch_64(
             &t->ctx,
             &w->sched_ctx
         );
-
+    
         // Returned from a task, check stack overflow by bounds (second-layer protection).
         // 128 shadow bytes
         if (t->ctx.rsp < t->stack + 128) {
