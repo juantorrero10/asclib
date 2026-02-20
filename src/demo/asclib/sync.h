@@ -3,6 +3,17 @@
 
 #include "core.h"
 
+#define io_timeout(ret_type_expected, _io_operation, timeout_ms, fallback_block) ({\
+    ret_type_expected __ret = any_some_or(ret_type_expected,\
+        await_any(\
+            _io_operation,\
+            asc_sleep(timeout_ms)\
+        ).cut_losers(),\
+        fallback_block\
+    );\
+    __ret;\
+})
+
 typedef enum {
     ST_CHAN_READY,    // Channel is open and empty
     ST_CHAN_CLOSED,   // NULL pointer or properly closed

@@ -94,10 +94,11 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
 
     // if we dont find a free spot realloc the array;
     size_t new_id = (size_t)-1;
-    for (int i = w->tasks.initial; i < (int)w->tasks.capacity; i++)
+    for (int i = w->tasks.initial; i < (int)w->tasks.capacity; i++) {
         if (tcb_state_map[i] == 0) { new_id = (size_t)i; break; }
+    }
 
-    if ((w->tasks.running >= w->tasks.capacity) && new_id == (size_t)-1) {
+    if (new_id == (size_t)-1) {
 
         size_t old_c = w->tasks.capacity;
 
@@ -109,15 +110,17 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
         // Memset to 0, destructors rely on NULL values!!
         memset(tcb_state_map + old_c, 0, w->tasks.capacity - old_c);
         memset(w->tasks.arr + old_c, 0, sizeof(TCB*) * (w->tasks.capacity - old_c));
-        new_id = w->tasks.running;
+        for (size_t i = old_c - 1; i < w->tasks.capacity; i++)
+        {
+            if (tcb_state_map[i] == 0) { new_id = i; break; }
+        }
+        
+        assert(new_id != (size_t)-1);
         
 
     }
 
     uint32_t final_gen = 1;
-    if (new_id == 5) {
-        (void)final_gen;
-    }
 
     if (new_id >= generation_map->size) {
         uint32_t start_gen = 1;
@@ -146,6 +149,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
 
 
     w->tasks.running++;
+
 
     // Task handle (only for the user)
     // lower 32 TCB offset

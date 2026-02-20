@@ -174,8 +174,10 @@ void __task_drop_impl(task_handle_t th);
 // await() but expect and recover a return value.
 // Runtime will panic if we expect value on a function that returns void
 #define await_ret(type, handle) ({ \
-    void* __ptr = __task_await_impl(handle, 1); \
-    type __val = *(type*)__ptr; \
+    void* __ptr = __task_await_impl((handle), 1); \
+    type __val;\
+    if (!__ptr) __val = (type)0;\
+    else __val = *(type*)__ptr; \
     free(__ptr); \
     __val; \
 })

@@ -33,7 +33,6 @@ extern TLS uu_hash_map* hmawait;
 // Managed by task_mem.c
 extern TLS g_arrlist_t* generation_map;
 
-
 // Thread-local worker variable
 TLS worker_t* tl_worker = NULL;
 
@@ -90,7 +89,6 @@ static void log_decision_state(worker_t* w, char* buff) {
 
 static void lazy_wait(worker_t* w) {
     // Calculate the next timer to wake up
-    INFO("LW");
     int64_t timeout_ms = -1; // Default: block indefinitely if no timers
     uint64_t now = get_time_ms();
     size_t top;
@@ -222,7 +220,7 @@ void* dispatcher(void* arg) {
         if (TCB_AT(w->tasks.current)) ts = STATUS_OF(w->tasks.current);
         if (last_dec.curr != w->tasks.current || last_dec.st != ts || last_dec.prev != buffer){
             printf("%s", states);
-            OKAY("found=%d, all_done=%d, previous=%zu, current=%zu, remaining=%zu", found, all_done, buffer, w->tasks.current, w->sync.initial_remaining);
+            OKAY("found=%d, all_done=%d, previous=%zu, current=%zu, remaining=%zu, running=%zu\n", found, all_done, buffer, w->tasks.current, w->sync.initial_remaining, w->tasks.running);
         }
         last_dec.curr = w->tasks.current;
         if (TCB_AT(w->tasks.current))last_dec.st = STATUS_OF(w->tasks.current);

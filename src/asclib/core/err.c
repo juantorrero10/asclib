@@ -6,6 +6,7 @@
 
 #include <ascerr.h>
 #include <dispatcher.h>
+#include <runtime.h>
 #include <collections.h>
 
 extern TLS fd_map_t* fdh;
@@ -76,11 +77,6 @@ void asc_error(asc_err_t err, const char* function, any_t value) {
         panic_linux("\033[4mStack overflow\033[0m, a bigger stack can be allocated with \033[1m\033[97mtask_new_ex(...)\033[0m or \033[1m\033[97mtask_entry_ex(...)\033[0m.", function);
         break;
 
-    case PANIC_EXPECT_NULL:
-        RT_ERR("Task<%zu> returned nothing, yet a return value is being expected.", function, value.u64);
-        panic_linux("Tried to dereference a NULL pointer, \033[4meither return something with \033[1m\033[97mtask_return( ... )\033[0m\033[4m or don't use \033[1m\033[97mawait_ret()\033[0m", function);
-        break;
-
     case PANIC_GENERIC_ASSERTION:
         RT_ERR("Assertion failed: '%s'", function, (char*)value.ptr);
         panic_linux("This operation cannot complete while the assertion fails.", function);
@@ -94,6 +90,11 @@ void asc_error(asc_err_t err, const char* function, any_t value) {
     case WARN_TRACKING_UNMARKED_OBJECT:
         RT_WRN("Tried tracking the closure of object of type \033[1m\033[97m<%s>\033[0m but it was not marked when created.", (char*)value.ptr);
         EXPL("Revise the parameters of the object's creation");
+        break;
+
+    case WARN_EXPECT_NULL:
+        RT_WRN("Task<%zu> returned nothing, yet a return value is being expected.", value.u64);
+        panic_linux("Tried to dereference a NULL pointer, \033[4meither return something with \033[1m\033[97mtask_return( ... )\033[0m\033[4m or don't use \033[1m\033[97mawait_ret()\033[0m", function);
         break;
 
     case WARN_TASK_ALREADY_FINISHED:
@@ -139,6 +140,11 @@ void asc_io_error(io_err_t ioerr, const char* function, any_t value, any_t value
         ssize_t owner = get_owner(value.i64);
         RT_ERR("File descriptor {%ld} was already being used by Task<0x%lx> and Task<0x%lx> tried to claim it", function, value.u64, owner, value2.u64);
         panic_linux("The same file descriptor cannot be used at the same time by two tasks", function);
+        break;
+
+    case IO_ERROR_INVALID_PARAMETERS:
+        RT_ERR("IO Operation '%s' couldn't be completed due to one or more invalid parameters.", function, (char*)value.ptr);
+        EXPL("Revise the input parameters.");
         break;
     default:
         break;

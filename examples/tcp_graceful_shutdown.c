@@ -15,7 +15,7 @@
 
 #include "asclib/core.h"
 #include "asclib/io.h"
-#include "asclib/net.h"
+#include "asclib/net/tcp.h"
 #include "asclib/cleanup.h"
 #include "asclib/env.h"
 

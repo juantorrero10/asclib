@@ -2,10 +2,23 @@
 #define CLEANUP_H_
 
 /**
- * This function contains macros and function for automatic cleanup with on_drop().
+ * This function contains macros and function for automatic cleanup with clean_on_drop().
  */
 
-#include "sync.h"
+#ifndef ASCLIB_SYNC_H_
+typedef struct _ASCLIB_Mpsc_rx_Handle      *mpsc_rx_t;
+typedef struct _ASCLIB_Mpsc_tx_Handle      *mpsc_tx_t;
+
+typedef struct _ASCLIB_Oneshot_RX_     *oneshot_rx_t;
+typedef struct _ASCLIB_Oneshot_TX_     *oneshot_tx_t;
+
+void mpsc_drop_tx(mpsc_tx_t pair);
+void mpsc_drop_rx(mpsc_rx_t pair);
+
+void oneshot_drop_rx(oneshot_rx_t tx);
+void oneshot_drop_tx(oneshot_tx_t tx);
+#endif
+
 #include <unistd.h>
 #include <sys/socket.h>
 #include <stdio.h>
@@ -14,6 +27,8 @@ typedef struct {
     void(*drop_)(void*);
     void* obj;
 } object_drop_autocleanup_t;
+
+
 
 // Unsafe versions of drop functions without ownership verification
 void __mpsc_forcedrop_rx(mpsc_rx_t rx);
@@ -28,6 +43,19 @@ static inline void __drop_tcplistener(void* p) {
     tcp_listerner_t* l = (tcp_listerner_t*)p;
     if (l->fd >= 0) shutdown(l->fd, SHUT_RDWR);
     free(l);
+}
+static inline void __drop_tcpclient(void* p) {
+    if (!p) return;
+    tcp_client_t* l = (tcp_client_t*)p;
+    if (l->fd >= 0) shutdown(l->fd, SHUT_RDWR);
+    free(l);
+}
+
+static inline void __drop_udpnode(void* p) {
+    if (!p) return;
+    udp_node_t* u = (udp_node_t*)p;
+    if (u->fd >= 0) shutdown(u->fd, SHUT_RDWR);
+    free(u);
 }
 
 static inline void __drop_fd(void* fd) { if ((int)(uintptr_t)fd >= 0) { close((int)(uintptr_t)fd); }}
@@ -45,6 +73,8 @@ void __drop_cleanup_register(object_drop_autocleanup_t oda);
     oneshot_tx_t: (void(*)(void*))__drop_oneshot_tx, \
     oneshot_rx_t: (void(*)(void*))__drop_oneshot_rx, \
     struct _ASCLIB_TCP_Listener_*: __drop_tcplistener, \
+    struct _ASCLIB_TCP_Client_*: __drop_tcpclient,     \
+    struct _ASCLIB_UDP_Node_*: __drop_udpnode,           \
     mpsc_tx_t: (void(*)(void*))__drop_mpsc_tx,       \
     mpsc_rx_t: (void(*)(void*))__drop_mpsc_rx,       \
     default: (void(*)(void*))__drop_pointer          \
@@ -53,12 +83,12 @@ void __drop_cleanup_register(object_drop_autocleanup_t oda);
 
 #define clean_on_drop(var_expr) ({                                      \
     __auto_type _tmp_val = (var_expr);                                  \
-    object_drop_autocleanup_t _oda = {                                  \
-        .drop_ = drop_func_of(_tmp_val),                                \
-        .obj = (void*)(uintptr_t)_tmp_val                               \
-    };                                                                  \
-    __drop_cleanup_register(_oda);                                      \
-    _tmp_val;                                                           \
+    object_drop_autocleanup_t _oda = {                               \
+        .drop_ = drop_func_of(_tmp_val),                             \
+        .obj = (void*)(uintptr_t)_tmp_val                            \
+    };                                                               \
+    __drop_cleanup_register(_oda);                                   \
+    _tmp_val;                                                            \
 })
 
 

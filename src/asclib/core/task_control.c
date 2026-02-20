@@ -42,11 +42,10 @@ void task_trampoline(void) {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "task_trampoline");
     TCB* t = w->tasks.arr[w->tasks.current];
-
+    
+    // Start the task!!
     void* res = t->fptr((void*)t->arg);
 
-
-    // Start the task!!
     if (!t->dyn_created) {
         // One of the initial tasks
         w->returned_array[w->tasks.current] = res;
@@ -143,7 +142,7 @@ void* __task_await_impl(task_handle_t th, int expect) {
     if (!TCB_AT(th) || STATUS_OF(th) == FINISHED) {
         if (TCB_AT(th)) result = w->tasks.arr[th]->returned;
         if (expect && !result) {
-            asc_error(PANIC_EXPECT_NULL, "__task_await_impl()", (any_t)th);
+            asc_error(WARN_EXPECT_NULL, "__task_await_impl()", (any_t)th);
         }
         __task_destroy(th);
         __task_yield_impl();
@@ -220,7 +219,7 @@ any_result __task_await_any_impl(task_handle_t* handles, size_t num_task) {
     ));
 
     // Set the state to race.
-    SET_VIRTUAL_RACE(virtual);
+    SET_VIRTUAL_RACE(LOWER_32(virtual));
 
     ssize_t already_finished = -1;
 
