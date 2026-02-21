@@ -60,7 +60,8 @@ worker_t* worker_create(size_t n_tasks, ...) {
     ret->sync.epoll_fd = epoll_create1(0);
     ASSERT_SYSCALL(ret, ret->sync.epoll_fd == -1, "epoll_create1");
     ret->sync.initial_done = 0;
-    ret->tasks.current = n_tasks - 1; // so that RR will rollback to 0 in first round 
+    ret->tasks.current = n_tasks - 1; // so that RR will rollback to 0 in first round
+    ret->custom_sigsegv_handler = 1;
     ret->tasks.running = ret->tasks.initial = n_tasks;
     ret->tasks.capacity = ret->tasks.running;
     ret->tasks.arr = tasklisk;
@@ -115,10 +116,11 @@ void worker_destroy(worker_t* w) {
     free(w);
 }
 
-void worker_run(worker_t* w) {
+void worker_run(worker_t* w, int __disable_custom_sigsegv_handler) {
 
     if (!w) return;
     if (!w->tasks.running || w->tasks.arr == NULL) return;
+    if (__disable_custom_sigsegv_handler) w->custom_sigsegv_handler = 0;
 
     pthread_mutex_lock(&w->sync.lock);
     w->sync.initial_done = 0;
@@ -126,6 +128,14 @@ void worker_run(worker_t* w) {
     
     //Spawn a thread
     pthread_create(&w->th, NULL, dispatcher, (void*)w);
+}
+
+/**
+ * @brief Disable the SIGSEGV handler.
+ * @brief It can often obfustcate stack traces for unrelated segfaults.
+ */
+void worker_disable_sigsegv(worker_t* w) {
+    w->custom_sigsegv_handler = 0;
 }
 
 

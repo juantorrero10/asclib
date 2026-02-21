@@ -150,8 +150,9 @@ void* dispatcher(void* arg) {
     w->returned_array = calloc(w->tasks.running, sizeof(task_result_t));
     assert(w->returned_array);
     
+    if (w->custom_sigsegv_handler)set_sigsegv_handler();
 
-    //set_sigsegv_handler();
+
     hmawait = NULL;
     
     TCB* t = NULL;

@@ -98,7 +98,7 @@ void sigsegv_stackoverflow(int sigs, siginfo_t* si, void* unused) {
     // Correct check: Did the fault happen inside the task's specific guard page?
     if (t->guard_page && fault_addr >= guard_start && fault_addr < guard_end) {
         char buff[50];
-        sprintf(buff, "task<0x%lx>: %p", GET_FULL_HANDLE(), t->fptr);
+        sprintf(buff, "task<0x%lx> : %p", GET_FULL_HANDLE(), t->fptr);
         asc_error(PANIC_STACK_OVERFLOW_GUARDPAGE, buff, (any_t)fault_addr);
     } else {
         signal(sigs, SIG_DFL);

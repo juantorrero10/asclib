@@ -26,14 +26,17 @@ typedef struct {
 } worker_tasks_t;
 
 typedef struct _Thread_Worker {
+    int custom_sigsegv_handler;
+
     pthread_t th;           // Resposible thread
-    ctx_t sched_ctx;        // register context block of dipatcher
+    void* emergency_stack;  // to print SIGSEGV's
+    void** returned_array;  // results of the inital tasks
+    
 
     worker_sync_t sync;
     worker_tasks_t tasks;
-
-    void* emergency_stack;  // to print SIGSEGV's
-    void** returned_array;  // results of the inital tasks
+    
+    ctx_t sched_ctx;        // register context block of dipatcher
 
 } worker_t;
 

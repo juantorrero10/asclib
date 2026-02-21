@@ -19,6 +19,32 @@ void oneshot_drop_rx(oneshot_rx_t tx);
 void oneshot_drop_tx(oneshot_tx_t tx);
 #endif
 
+#ifndef ASCLIB_NET_TCP_H_
+typedef struct _ASCLIB_TCP_Listener_ {
+    int fd;
+    uint8_t ip_addr[4];
+    uint16_t port;
+} tcp_listerner_t;
+typedef struct _ASCLIB_TCP_Client_ {
+    int fd;
+    uint8_t server_ip_addr[4];
+    uint16_t server_port;
+} tcp_client_t;
+#endif
+#ifndef ASCLIB_NET_UDP_H_
+typedef struct _ASCLIB_UDP_Peer_ {
+    uint8_t ip_addr[4];
+    uint16_t port;
+} udp_peer_t;
+
+typedef struct _ASCLIB_UDP_Node_ {
+    int fd;
+    udp_peer_t bind_addr;
+    int is_connected;       
+    udp_peer_t target;
+} udp_node_t;
+#endif
+
 #include <unistd.h>
 #include <sys/socket.h>
 #include <stdio.h>

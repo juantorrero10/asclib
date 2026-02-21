@@ -32,6 +32,15 @@ typedef struct _ASCLIB_Mpsc_pair_Handle    *mpsc_pair_t;
 // SLEEP
 task_handle_t asc_sleep(uint64_t ms);
 
+/**
+ * @brief Spawn a task that waits until a file or dir is changed in writing.
+ * @param files NULL terminated array of strings.
+ * @param out_file_changed [NULLABLE OUT] pointer to the string of the file that changed.
+ * @param __recursive search for modifications in all files recursively.
+ * @returns -1 if operation failed.
+ */
+task_handle_t asc_inotify(char* files[], char** out_file_changed, int __recursive);
+
 //MPSC
 mpsc_pair_t mpsc_new(size_t packet_size, size_t max_messages, int __track_closure);
 mpsc_rx_ref_t mpsc_move_rx(mpsc_pair_t pair);

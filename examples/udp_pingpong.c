@@ -10,7 +10,6 @@
 #include <errno.h>
 
 #include "asclib/core.h"
-#include "asclib/net/tcp.h"
 #include "asclib/net/udp.h"
 #include "asclib/sync.h"
 #include "asclib/cleanup.h"

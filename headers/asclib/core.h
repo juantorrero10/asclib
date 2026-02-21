@@ -52,7 +52,7 @@ typedef struct _CleanUP_Routine {
     void (*cleanup)(void*);
 } cleanup_routine_t;
 
-#define TASK_DEFAULT_PAGES 2
+#define TASK_DEFAULT_PAGES 5
 
 /** 
  * @brief Macro for task creation.
@@ -267,8 +267,15 @@ void __task_drop_impl(task_handle_t th);
 #define detach do { task_detach((task_handle_t){ -1 }); } while(0);
 
 
-// WORKER FUNCTION
+// WORKER FUNCTIONS
 worker_t* worker_create(size_t running, ...);
+
+/**
+ * @brief Disable the SIGSEGV handler.
+ * @brief It can often obfustcate stack traces for unrelated segfaults.
+ */
+void worker_disable_sigsegv(worker_t* w);
+
 void worker_destroy(worker_t* worker);
 void worker_run(worker_t* w);
 task_result_t* worker_await_all(worker_t* w);

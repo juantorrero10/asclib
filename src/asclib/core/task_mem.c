@@ -43,6 +43,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
 
     // If we decide to not override
     if ( ov_stack_size == 0 ) ov_stack_size = te.n_pages * PAGE_SIZE;
+
     
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "__task_create_ex()");
@@ -102,7 +103,7 @@ task_handle_t __task_create_ex(task_entry_t te, size_t ov_stack_size, uint32_t _
 
         size_t old_c = w->tasks.capacity;
 
-        w->tasks.arr =      realloc(w->tasks.arr, sizeof(TCB*) * w->tasks.capacity * 2);
+        w->tasks.arr =     realloc(w->tasks.arr, sizeof(TCB*) * w->tasks.capacity * 2);
         tcb_state_map =    realloc(tcb_state_map, w->tasks.capacity * 2);
 
         w->tasks.capacity *= 2;
