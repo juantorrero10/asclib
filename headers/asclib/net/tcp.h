@@ -13,7 +13,7 @@ typedef struct _ASCLIB_TCP_Listener_ {
     int fd;
     uint8_t ip_addr[4];
     uint16_t port;
-} tcp_listerner_t;
+} tcp_listener_t;
 
 /**
  * @brief Descriptor of a connection to a TCP server. 
@@ -24,12 +24,12 @@ typedef struct _ASCLIB_TCP_Client_ {
     uint16_t server_port;
 } tcp_client_t;
 
-task_handle_t asc_tcp_accept(tcp_listerner_t* l);
+task_handle_t asc_tcp_accept(tcp_listener_t* l);
 
 /**
  * @brief Create a TCP socket and make a server.
  */
-tcp_listerner_t* asc_tcp_bind(uint8_t ip_addr[], uint16_t port);
+tcp_listener_t* asc_tcp_bind(uint8_t ip_addr[], uint16_t port);
 
 /**
  * @brief TCP client connect.

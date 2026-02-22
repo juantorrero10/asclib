@@ -24,7 +24,7 @@ typedef struct _ASCLIB_TCP_Listener_ {
     int fd;
     uint8_t ip_addr[4];
     uint16_t port;
-} tcp_listerner_t;
+} tcp_listener_t;
 typedef struct _ASCLIB_TCP_Client_ {
     int fd;
     uint8_t server_ip_addr[4];
@@ -66,7 +66,7 @@ void __release_fd(int fd);
 static inline void __drop_pointer(void* p) {if (p) free(p); }
 static inline void __drop_tcplistener(void* p) {
     if (!p) return;
-    tcp_listerner_t* l = (tcp_listerner_t*)p;
+    tcp_listener_t* l = (tcp_listener_t*)p;
     if (l->fd >= 0) shutdown(l->fd, SHUT_RDWR);
     free(l);
 }
