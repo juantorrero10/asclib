@@ -24,7 +24,7 @@ typedef struct _ASCLIB_TCP_Listener_ {
     int fd;
     uint8_t ip_addr[4];
     uint16_t port;
-} tcp_listerner_t;
+} tcp_listener_t;
 
 typedef struct _ASCLIB_TCP_Client_ {
     int fd;
@@ -34,7 +34,7 @@ typedef struct _ASCLIB_TCP_Client_ {
 
 
 
-decl_async(int, __internal_tcp_accept, tcp_listerner_t* l);
+decl_async(int, __internal_tcp_accept, tcp_listener_t* l);
 decl_async(tcp_client_t*, __internal_tcp_connect, uint8_t* ip_addr; uint16_t port);
 
 /*
@@ -45,7 +45,7 @@ static inline void str_addr(char* c16, uint8_t addr4[]) {
 
 
 
-tcp_listerner_t* asc_tcp_bind(uint8_t* ip_addr, uint16_t port) {
+tcp_listener_t* asc_tcp_bind(uint8_t* ip_addr, uint16_t port) {
     char* f = "NET::asc_tcp_bind()";
 
     int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
@@ -70,7 +70,7 @@ tcp_listerner_t* asc_tcp_bind(uint8_t* ip_addr, uint16_t port) {
         goto __clean_fail; 
 
 
-    tcp_listerner_t* ret = malloc(sizeof(tcp_listerner_t));
+    tcp_listener_t* ret = malloc(sizeof(tcp_listener_t));
     ret->fd = fd;
     memcpy(ret->ip_addr, ip_addr, 4);
     ret->port = port;
@@ -153,7 +153,7 @@ task_handle_t asc_tcp_connect(uint8_t* ip_addr, uint16_t port) {
 
 }
 
-async_(__internal_tcp_accept, tcp_listerner_t* l) {
+async_(__internal_tcp_accept, tcp_listener_t* l) {
     struct sockaddr_in client;
     socklen_t clen = sizeof(client);
     worker_t* w = tl_worker;
@@ -184,7 +184,7 @@ async_(__internal_tcp_accept, tcp_listerner_t* l) {
 }
 
 
-task_handle_t asc_tcp_accept(tcp_listerner_t* l) {
+task_handle_t asc_tcp_accept(tcp_listener_t* l) {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "NET::asc_tcp_accept()");
 

@@ -64,7 +64,7 @@ async(handle_client, int client_fd; oneshot_tx_ref_t shutdown_ref) {
     end_return_void();
 }
 
-async(accept_loop, tcp_listerner_t* listener; oneshot_tx_ref_t shutdown_ref) {
+async(accept_loop, tcp_listener_t* listener; oneshot_tx_ref_t shutdown_ref) {
     while (1) {
         int client_fd = await_ret(int, asc_tcp_accept(arg(listener)));
         if (client_fd >= 0) {
@@ -80,7 +80,7 @@ async(accept_loop, tcp_listerner_t* listener; oneshot_tx_ref_t shutdown_ref) {
 async(main_server) {
 
 
-    tcp_listerner_t* listener = clean_on_drop(asc_tcp_bind((uint8_t[]){127, 0, 0, 1}, 9999));
+    tcp_listener_t* listener = clean_on_drop(asc_tcp_bind((uint8_t[]){127, 0, 0, 1}, 9999));
     if (!listener) {
         printf("[SERVER]: Binding failed! -> %s\n", strerror(errno));
         task_return_void();
