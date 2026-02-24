@@ -221,6 +221,17 @@ void __task_drop_impl(task_handle_t th);
         _val;                                     \
     })
 
+#define any_expect_winner_or(returned_type, expected_idx, await_any_block, fallback)        \
+    ({                                                              \
+        any_result _r = (await_any_block);                          \
+        if ((_r.winner_idx) != (expected_idx)) {                    \
+            fallback;                                               \
+        }                                                           \
+        returned_type _val = *(returned_type*)_r.winner_return;     \
+        free(_r.winner_return);                                     \
+        _val;                                                       \
+    })
+
 
 #define any_ret(type, result) ({\
     void* __ptr = result.winner_return;\
