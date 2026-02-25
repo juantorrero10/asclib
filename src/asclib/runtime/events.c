@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 199309L
+#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <time.h>
@@ -18,6 +19,10 @@
 #include <user_lib.h>
 #include <task_mem.h>
 #include <runtime.h>
+
+#define __DEBUG
+
+#include <log.h>
 
 extern TLS g_arrlist_t* generation_map;
 
@@ -95,9 +100,8 @@ static inline int __is_dir(const char* path) {
     return S_ISDIR(st.st_mode);
 }
 
-static void __watch_file(int ifd, u64_arrlist_t* wds, char* path, int recursive, int rec_lvl) {
-    
-    u64al_append(wds, (uint64_t)inotify_add_watch(ifd, path, IN_CLOSE_WRITE | IN_MOVED_TO));   
+static void __watch_file(int ifd, u64_arrlist_t* wds, char* path, int recursive, int rec_lvl, uint32_t mask) {
+    u64al_append(wds, (uint64_t)inotify_add_watch(ifd, path, mask));   
     if (recursive && rec_lvl < MAX_RECURSION_LVL) {
         DIR* d = opendir(path);
         if (!d) return;
@@ -109,7 +113,7 @@ static void __watch_file(int ifd, u64_arrlist_t* wds, char* path, int recursive,
             char _path[PATH_MAX];
             sprintf(_path, "%s/%s", path, entry->d_name);
             if (__is_dir(_path)) {
-                __watch_file(ifd, wds, _path, 1, rec_lvl + 1);
+                __watch_file(ifd, wds, _path, 1, rec_lvl + 1, mask);
             }
         }
         closedir(d);
@@ -119,7 +123,7 @@ static void __watch_file(int ifd, u64_arrlist_t* wds, char* path, int recursive,
 
 
 
-async(__internal_inotify, char** _files; char** ofc; int r) {
+async(__internal_inotify, char** _files; char** ofc; int r; uint32_t mask) {
     char** files = arg(_files);
     char** ofc = arg(ofc); // Optional output file that changed
     int recursive = arg(r);
@@ -142,7 +146,7 @@ async(__internal_inotify, char** _files; char** ofc; int r) {
     u64_arrlist_t* wds = u64al_alloc(amnt);
     for (size_t i = 0; i < amnt; i++)
     {
-        __watch_file(ifd, wds, files[i], recursive, 0);
+        __watch_file(ifd, wds, files[i], recursive, 0, arg(mask));
     }
     
 
@@ -162,11 +166,17 @@ async(__internal_inotify, char** _files; char** ofc; int r) {
                 for (size_t i = 0; i < wds->size; i++)
                 {
                     if (event->wd == (int)wds->data[i]) {
-                        *ofc = files[i];
+                        if (event->len > 0) {
+                            char buffer_path[PATH_MAX];
+                            snprintf(buffer_path, PATH_MAX, "%s/%s", files[i], event->name);
+                            *ofc = strdup(buffer_path);
+                            goto __exit;
+                        }
+                        *ofc = strdup(files[i]);
                         goto __exit;
                     }
-                    ptr += sizeof(struct inotify_event) + event->len;
                 }
+                ptr += sizeof(struct inotify_event) + event->len;
             }
         }
 
@@ -191,9 +201,9 @@ __exit:
 }
 
 
-task_handle_t asc_inotify(char* files[], char** out_file_changed, int __recursive) {
+task_handle_t asc_inotify(char* files[], char** out_file_changed, int __recursive, uint32_t mask) {
     worker_t* w = tl_worker;
     ASSERT_CONTEXT(w, "SYNC::inotify()");
-    return task_spawn_ex(__internal_inotify, 3 + (MAX_RECURSION_LVL * (__recursive != 0)) * 4096, 1, ._files = files, .ofc = out_file_changed, .r = __recursive);
+    return task_spawn_ex(__internal_inotify, (3 + (MAX_RECURSION_LVL * (__recursive != 0))) * 4096, 1, ._files = files, .ofc = out_file_changed, .r = __recursive, .mask = mask);
 }
 

@@ -39,7 +39,7 @@ task_handle_t asc_sleep(uint64_t ms);
  * @param __recursive search for modifications in all files recursively.
  * @returns -1 if operation failed.
  */
-task_handle_t asc_inotify(char* files[], char** out_file_changed, int __recursive);
+task_handle_t asc_inotify(char* files[], char** out_file_changed, int __recursive, uint32_t mask);
 
 //MPSC
 mpsc_pair_t mpsc_new(size_t packet_size, size_t max_messages, int __track_closure);
