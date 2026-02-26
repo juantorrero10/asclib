@@ -133,6 +133,7 @@ oneshot_pair_t oneshot_new(size_t payload_size, int __track_closure) {
     chan->rx_owner = GET_FULL_HANDLE();
     chan->rx_waiter = -2;
     chan->tx_alive = 1;
+    chan->sent = 0;
     chan->payload_sz = payload_size;
     chan->tx_owner = GET_FULL_HANDLE();
     chan->payload = malloc(sizeof(payload_size));
