@@ -2,8 +2,10 @@ TARGET = asclib_demo
 LIB_NAME = libasclib.a
 CC = gcc
 
-CFLAGS_RELEASE = -Wall -Wextra -Werror -std=c17 -Isrc/asclib/include -g -O0 -m64 -MMD -MP -fPIC
-CFLAGS_DEBUG   = -Wall -Wextra -std=c17 -Isrc/asclib/include -g -O0 -MMD -MP
+OPT ?= 0
+
+CFLAGS_RELEASE = -Wall -Wextra -Werror -std=c17 -Isrc/asclib/include -g -O$(OPT) -m64 -MMD -MP -fPIC
+CFLAGS_DEBUG   = -Wall -Wextra -std=c17 -Isrc/asclib/include -g -O$(OPT) -MMD -MP
 CFLAGS = $(CFLAGS_RELEASE)
 
 SRC_DIR = src

@@ -19,6 +19,7 @@
 #include <user_lib.h>
 #include <task_mem.h>
 #include <runtime.h>
+#include <user_lib_cleanup.h>
 
 #define __DEBUG
 
@@ -144,6 +145,8 @@ async(__internal_inotify, char** _files; char** ofc; int r; uint32_t mask) {
 
     // Add to watch
     u64_arrlist_t* wds = u64al_alloc(amnt);
+    clean_on_drop((void*)wds->data);
+    clean_on_drop((void*)wds);
     for (size_t i = 0; i < amnt; i++)
     {
         __watch_file(ifd, wds, files[i], recursive, 0, arg(mask));
@@ -195,7 +198,6 @@ async(__internal_inotify, char** _files; char** ofc; int r; uint32_t mask) {
     }
     
 __exit:
-    u64al_dealloc(&wds);
     close(ifd);
     end_return(int, ret);
 }
