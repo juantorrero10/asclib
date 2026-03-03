@@ -74,13 +74,11 @@ worker_t* worker_create(size_t n_tasks, ...) {
 
 void worker_destroy(worker_t* w) {
     assert(w);
-
     if (!w->sync.all_done && w->sync.initial_done) {
         asc_error(ERR_TASK_OUTLIVED_DESTROYER, "worker_destroy()", (any_t)0); 
     } else if (w->sync.initial_remaining){
         asc_error(PANIC_UNAWAITED_DESTROY, "worker_destroy()", (any_t)0);
     }
-
 
     for (size_t i = 0; i < w->tasks.capacity; i++)
     {
@@ -107,12 +105,11 @@ void worker_destroy(worker_t* w) {
     }
     free(w->returned_array);
     free(w->tasks.arr);
-    free(w->emergency_stack);
     close(w->sync.epoll_fd);
     // OS deletion of threads is not inmediate after thread returns
     // It doesn't trigger an error because we are exiting gracefully from thread.
     // The wait time is very minimal. The OS has to do some cleanup.
-    pthread_join(w->th, NULL); 
+    pthread_join(w->th, NULL);
     free(w);
 }
 
