@@ -21,7 +21,7 @@ worker_t* worker_create(size_t n_tasks, ...) {
 
     assert(n_tasks > 0);
 
-    worker_t* ret = malloc(sizeof(worker_t));
+    worker_t* ret = calloc(sizeof(worker_t), 1);
     TCB** tasklisk = (TCB**)malloc(sizeof(TCB*) * n_tasks);
 
     va_start(args, n_tasks);
@@ -105,6 +105,7 @@ void worker_destroy(worker_t* w) {
     }
     free(w->returned_array);
     free(w->tasks.arr);
+    if (w->custom_sigsegv_handler) free(w->emergency_stack);
     close(w->sync.epoll_fd);
     // OS deletion of threads is not inmediate after thread returns
     // It doesn't trigger an error because we are exiting gracefully from thread.
