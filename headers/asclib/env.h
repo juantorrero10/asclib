@@ -4,9 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#ifndef ASCLIB_CORE_H_
-typedef struct _AL_TH_ { size_t val } task_handle_t;
-#endif
+#include "core.h"
 
 uint64_t _env_new_tls_key(size_t sz, void(*destructor)(void*));
 void _env_local_get(uint64_t key, void* buffer);
