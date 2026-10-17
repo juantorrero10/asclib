@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+typedef struct _AL_TH_ task_handle_t;
+
 uint64_t _env_new_tls_key(size_t sz, void(*destructor)(void*));
 void _env_local_get(uint64_t key, void* buffer);
 void _env_local_set(uint64_t key, void* val);
