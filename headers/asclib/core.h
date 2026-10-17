@@ -136,6 +136,10 @@ void __task_drop_impl(task_handle_t th);
         __ASCLIB__##name##__ARGDECL* __args = (__ASCLIB__##name##__ARGDECL*)__arg;        \
         (void)__args;
 
+// This macro is just a documentation tool for functions that spawn tasks.
+// Since they have to return task_handle_t it opaques the task real return type
+#define async_task(type) task_handle_t
+
     
 #define arg(name) (__args->name)
 

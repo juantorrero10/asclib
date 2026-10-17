@@ -30,7 +30,7 @@ typedef struct _ASCLIB_Mpsc_tx_Handle      *mpsc_tx_t;
 typedef struct _ASCLIB_Mpsc_pair_Handle    *mpsc_pair_t;
 
 // SLEEP
-task_handle_t asc_sleep(uint64_t ms);
+async_task(void) asc_sleep(uint64_t ms);
 
 /**
  * @brief Spawn a task that waits until a file or dir is changed in writing.
@@ -39,7 +39,7 @@ task_handle_t asc_sleep(uint64_t ms);
  * @param __recursive search for modifications in all files recursively.
  * @returns -1 if operation failed.
  */
-task_handle_t asc_inotify(char* files[], char** out_file_changed, int __recursive, uint32_t mask);
+async_task(int) asc_inotify(char* files[], char** out_file_changed, int __recursive, uint32_t mask);
 
 //MPSC
 mpsc_pair_t mpsc_new(size_t packet_size, size_t max_messages, int __track_closure);
@@ -49,8 +49,8 @@ mpsc_tx_t mpsc_clone_tx(mpsc_pair_t pair);
 mpsc_rx_ref_t mpsc_release_rx(mpsc_rx_t rx);
 void mpsc_drop_tx(mpsc_tx_t pair);
 void mpsc_drop_rx(mpsc_rx_t pair);
-task_handle_t asc_mpsc_send(mpsc_tx_t tx, void* data);
-task_handle_t asc_mpsc_recv(mpsc_rx_t rx, void* buff);
+async_task(chan_err_t) asc_mpsc_send(mpsc_tx_t tx, void* data);
+async_task(chan_err_t) asc_mpsc_recv(mpsc_rx_t rx, void* buff);
 void mpsc_assert_closed(mpsc_pair_t pair);
 
 //ONESHOTS
@@ -60,8 +60,8 @@ typedef struct _ASCLIB_Oneshot_RXREF_  *oneshot_rx_ref_t;
 typedef struct _ASCLIB_Oneshot_TX_     *oneshot_tx_t;
 typedef struct _ASCLIB_Oneshot_TXREF_  *oneshot_tx_ref_t;
 
-task_handle_t asc_oneshot_recv(oneshot_rx_t rx, void* buffer);
-task_handle_t asc_oneshot_send(oneshot_tx_t tx, void* payload);
+async_task(chan_err_t) asc_oneshot_recv(oneshot_rx_t rx, void* buffer);
+async_task(chan_err_t) asc_oneshot_send(oneshot_tx_t tx, void* payload);
 oneshot_pair_t oneshot_new(size_t payload_size, int __track_closure);
 oneshot_rx_ref_t oneshot_move_rx(oneshot_pair_t rx);
 oneshot_rx_t oneshot_take_rx(oneshot_rx_ref_t ref);
@@ -71,7 +71,7 @@ void oneshot_assert_closed(oneshot_pair_t pair);
 void oneshot_drop_rx(oneshot_rx_t tx);
 void oneshot_drop_tx(oneshot_tx_t tx);
 chan_status_t oneshot_status(void* any_end);
-task_handle_t oneshot_wait_change(void* any_end);
+async_task(void) oneshot_wait_change(void* any_end);
 
 
 // ERROR

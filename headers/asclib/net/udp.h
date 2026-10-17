@@ -5,6 +5,9 @@
 #include <stdio.h>
 
 typedef struct _AL_TH_ task_handle_t;
+// This macro is just a documentation tool for functions that spawn tasks.
+// Since they have to return task_handle_t it opaques the task real return type
+#define async_task(type) task_handle_t
 
 #define peer_from(_addr, _port) ({\
     udp_peer_t __ret = {0};\
@@ -61,7 +64,7 @@ void asc_udp_target(udp_node_t* client_socket, uint8_t target_ip_addr[], uint16_
  * @note  If calling on a "targeted" UDP node it will only receive from a singular address. See ```asc_udp_target()```.
  * @returns The task returns a ```ssize_t``` that is < 0 on failure and values >= 0 describe the length of the data.
  */
-task_handle_t asc_recvfrom(udp_node_t* socket, void* buff, size_t n, udp_peer_t* out_peer);
+async_task(ssize_t) asc_recvfrom(udp_node_t* socket, void* buff, size_t n, udp_peer_t* out_peer);
 
 /**
  * @brief Sending a UDP Packet.
@@ -70,7 +73,7 @@ task_handle_t asc_recvfrom(udp_node_t* socket, void* buff, size_t n, udp_peer_t*
  * @note  If calling on a "targeted" UDP node, ```target_peer``` will be ignored and use the target inside the socket. See ```asc_udp_target()```.
  * @returns The task returns a ```ssize_t``` that is < 0 on failure and values >= 0 describe the length of the data.
  */
-task_handle_t asc_sendto(udp_node_t* socket, void* buff, size_t n, udp_peer_t target_peer);
+async_task(ssize_t) asc_sendto(udp_node_t* socket, void* buff, size_t n, udp_peer_t target_peer);
 
 static void asc_peer_tostring(udp_peer_t* peer, char* buff, size_t n) {
     if (n < 24) return;
