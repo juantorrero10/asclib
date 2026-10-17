@@ -110,7 +110,6 @@ static void* __internal_oneshot_send(void* __arg) {
 
     memcpy(chan->payload, payload, chan->payload_sz);
     chan->sent = 1;
-    chan->tx_alive = 0;
 
     worker_t* w = tl_worker;
 
@@ -146,7 +145,9 @@ static void oneshot_free(oneshot_pair_t* p) {
     if (!(*p)) return;
     oneshot_t** c = (oneshot_t**)p;
     free((*c)->payload);
+    (*c)->payload = NULL;
     u64al_dealloc(&((*c)->action_waiters));
+    (*c)->action_waiters = NULL;
     free((*c));
     *c = NULL;
 }
