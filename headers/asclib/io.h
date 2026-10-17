@@ -8,9 +8,11 @@
 #include <sys/uio.h>
 
 
+#ifndef ASCLIB_CORE_H_
 // This macro just to documentation tool for functions that spawn tasks.
 // Since they have to return task_handle_t it opaques the task real return type
 #define async_task(type) task_handle_t
+#endif
 
 
 async_task(ssize_t) asc_write(int fd, void* buff, size_t __n);

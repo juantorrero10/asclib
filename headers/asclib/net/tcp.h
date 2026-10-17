@@ -4,11 +4,14 @@
 #include <stdint.h>
 #include <sys/socket.h>
 
+#ifndef ASCLIB_CORE_H_
 typedef struct _AL_TH_ task_handle_t;
 
 // This macro is just a documentation tool for functions that spawn tasks.
 // Since they have to return task_handle_t it opaques the task real return type
 #define async_task(type) task_handle_t
+#endif
+
 
 /**
  * @brief Descriptor of a listening TCP socket.

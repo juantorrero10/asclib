@@ -1,10 +1,12 @@
-#ifndef DEMO_ASCLIB_ENV_H_
-#define DEMO_ASCLIB_ENV_H_
+#ifndef ASCLIB_ENV_H_
+#define ASCLIB_ENV_H_
 
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef struct _AL_TH_ task_handle_t;
+#ifndef ASCLIB_CORE_H_
+typedef struct _AL_TH_ { size_t val } task_handle_t;
+#endif
 
 uint64_t _env_new_tls_key(size_t sz, void(*destructor)(void*));
 void _env_local_get(uint64_t key, void* buffer);
@@ -56,4 +58,4 @@ void _env_local_set(uint64_t key, void* val);
 // Hardcoded keys
 ENV_DECLARE_NOSET(task_handle_t, SELF); // KEY = 0
 
-#endif // DEMO_ASCLIB_ENV_H_
+#endif // ASCLIB_ENV_H_

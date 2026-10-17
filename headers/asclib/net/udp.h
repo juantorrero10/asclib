@@ -4,10 +4,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#ifndef ASCLIB_CORE_H_
 typedef struct _AL_TH_ task_handle_t;
+
 // This macro is just a documentation tool for functions that spawn tasks.
 // Since they have to return task_handle_t it opaques the task real return type
 #define async_task(type) task_handle_t
+#endif
 
 #define peer_from(_addr, _port) ({\
     udp_peer_t __ret = {0};\
